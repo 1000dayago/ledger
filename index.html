@@ -471,6 +471,21 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 .wk:not(.bigw)>.ws::after{content:"";order:1;flex:1;border-top:1px solid color-mix(in srgb,var(--ink) 9%,transparent);margin:0 2px}
 .wk:not(.bigw)>.ws .num{order:2;font-size:10px;font-weight:700;margin-left:0}
 .wk:not(.bigw)>.ws .num+.num{margin-left:4px}
+
+/* v2.3.9 분류 아이콘: 고정 순서·구분선·줄바꿈 */
+.catwrap .iconbar{flex-wrap:wrap;overflow:visible;gap:2px 0;padding:6px 6px 6px;touch-action:auto;align-items:flex-start;justify-content:flex-start}
+.catwrap .icb{width:46px;touch-action:auto;padding:3px 0}
+.catwrap .icb .ico{--s:34px}
+.catwrap .icb .n{font-size:9.5px}
+.gsep{flex:none;width:0;align-self:stretch;margin:6px 4px;border-left:1px solid color-mix(in srgb,var(--ink) 16%,transparent)}
+
+.catwrap .iconbar{flex-direction:column;flex-wrap:nowrap;gap:0}
+.catwrap .grow{display:flex;flex-wrap:wrap;width:100%}
+.gsep{display:block;width:auto;align-self:stretch;margin:3px 6px;border-left:0;border-top:1px solid color-mix(in srgb,var(--ink) 14%,transparent)}
+
+.ipick{display:grid;grid-template-columns:repeat(auto-fill,minmax(46px,1fr));gap:6px;margin:10px 0;max-height:34dvh;overflow-y:auto;padding:2px}
+.ipb{padding:4px;border-radius:12px;display:flex;justify-content:center;border:2px solid transparent}
+.ipb.on{border-color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent)}
 </style>
 </head>
 <body>
@@ -481,7 +496,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.3.8';
+const APP_VERSION = '2.3.11';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -545,8 +560,8 @@ const EVENT_TYPES = {
   etc: { name: '일정', color: '#2f9e6f', icon: '📅' },
 };
 /* 기본 종류 + 내가 추가한 종류 */
-const evType = k => EVENT_TYPES[k] || (db.evTypes || []).find(t => t.id === k) || EVENT_TYPES.etc;
-const evTypeList = () => [...Object.entries(EVENT_TYPES).map(([id, t]) => ({ id, ...t })), ...(db.evTypes || [])];
+const evType = k => EVENT_TYPES[k] ? { ...EVENT_TYPES[k], ...((db.evOver || {})[k] || {}) } : (db.evTypes || []).find(t => t.id === k) || EVENT_TYPES.etc;
+const evTypeList = () => [...Object.keys(EVENT_TYPES).map(id => ({ id, ...evType(id) })), ...(db.evTypes || [])];
 function evIco(t, size) {
   const k = String(t.icon || '').replace(/\uFE0F/g, ''), d = ICON_SVG[k], st = size ? `--s:${size};` : '';
   if (!d) return `<span class="ico em" style="--c:${t.color};${st}">${t.icon || ''}</span>`;
@@ -556,7 +571,7 @@ function evIco(t, size) {
 /* ---------- 저장소 ---------- */
 let db = null;
 function freshDB() {
-  return { v: 1, settings: { ...DEFAULT_SETTINGS }, cats: JSON.parse(JSON.stringify(DEFAULT_CATS)), tx: [], events: [], evTypes: [], rules: {}, lastBackup: null, nextId: 1 };
+  return { v: 1, settings: { ...DEFAULT_SETTINGS }, cats: JSON.parse(JSON.stringify(DEFAULT_CATS)), tx: [], events: [], evTypes: [], evOver: {}, rules: {}, lastBackup: null, nextId: 1 };
 }
 function loadDB() {
   let raw = null;
@@ -581,6 +596,7 @@ function adopt(o) {
   d.settings.catsV = 2;
   if (Array.isArray(o.tx)) d.tx = o.tx.filter(t => t && /^\d{4}-\d{2}-\d{2}$/.test(t.date) && isFinite(t.amount));
   if (Array.isArray(o.events)) d.events = o.events;
+  if (o.evOver && typeof o.evOver === 'object') d.evOver = o.evOver;
   if (Array.isArray(o.evTypes)) d.evTypes = o.evTypes.filter(t => t && t.id && t.name);
   if (o.rules && typeof o.rules === 'object') d.rules = o.rules;
   d.lastBackup = o.lastBackup || null;
@@ -631,8 +647,48 @@ const ICON_SVG = {
   '🎂': ['#d6568a','M4 14h16v6H4z M6 14v-3h12v3 M12 11V7 M12 4v1'],
   '💍': ['#2c9ac4','M12 21a6 6 0 1 0 0-12 6 6 0 0 0 0 12z M9 6l1.5-3h3L15 6'],
   '🎉': ['#d9822b','M4 20l5-13 8 8z M14 4v2 M19 9h2 M18 4l-1 1'],
+  '🍜': ['#d9822b','M3 11h18a9 9 0 0 1-18 0z M8 4l2 5 M13 3l-1 6 M17 5l-3 4'],
+  '🍔': ['#c9812e','M4 10a8 6 0 0 1 16 0z M3 14h18 M5 17h14v1a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z'],
+  '🍺': ['#c9a227','M6 8h9v12H6z M15 11h3a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-3 M6 8a3 3 0 0 1 3-3 3 3 0 0 1 6 3'],
+  '🛒': ['#d6568a','M3 4h2l2.5 11h10.5l2-8H6.5 M9 20h.01 M17 20h.01'],
+  '👟': ['#5b7bd5','M3 17v-5l5 1 3-4 3 3c3 0 7 1 7 5v1H3z M3 19h18'],
+  '🚗': ['#4a6fa5','M4 16v-4l2-5h12l2 5v4z M4 12h16 M7 16v2 M17 16v2 M7.5 14h.01 M16.5 14h.01'],
+  '⛽': ['#c4566b','M5 20V5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v15 M4 20h11 M14 9h2a2 2 0 0 1 2 2v5a1.5 1.5 0 0 0 3 0V8l-3-3 M7 8h5'],
+  '💡': ['#c9a227','M9 18h6 M10 21h4 M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z'],
+  '🏥': ['#c4566b','M4 21V6a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v15 M3 21h18 M12 9v6 M9 12h6'],
+  '🎮': ['#8a5cc7','M7 8h10a4 4 0 0 1 4 4v2a3 3 0 0 1-5.2 2L14.5 14h-5L8.2 16A3 3 0 0 1 3 14v-2a4 4 0 0 1 4-4z M8 11v3 M6.5 12.5h3 M16 11.5h.01 M18 13h.01'],
+  '📚': ['#8a5cc7','M5 4h4v16H5z M9 4h4v16H9z M14 6l4-1 3 14-4 1z'],
+  '🎓': ['#4a6fa5','M2 9l10-5 10 5-10 5z M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5 M22 9v6'],
+  '🏨': ['#2c9ac4','M3 20V8 M3 14h18v6 M3 11h6a2 2 0 0 1 2 2v1 M13 14v-2a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2'],
+  '👶': ['#d0629a','M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M9.5 11h.01 M14.5 11h.01 M10 15c1 1 3 1 4 0 M12 4c0-1 1-2 2-1'],
+  '🐶': ['#a07c3b','M5 9l2-5 4 3h2l4-3 2 5v6a5 5 0 0 1-5 5h-4a5 5 0 0 1-5-5z M9.5 12h.01 M14.5 12h.01 M11 16h2'],
+  '💄': ['#d6568a','M9 21v-8h6v8z M10 13V9l4-5v9 M8 21h8'],
+  '💇': ['#8a5cc7','M6 5a2.5 2.5 0 1 0 .01 0z M6 14a2.5 2.5 0 1 0 .01 0z M8 7l12 11 M8 16L20 6'],
+  '🏋': ['#3f9a8f','M3 9v6 M6 7v10 M18 7v10 M21 9v6 M6 12h12'],
+  '🧾': ['#7d8794','M6 3h12v18l-3-2-3 2-3-2-3 2z M9 8h6 M9 12h6'],
+  '🔧': ['#7d8794','M15 5a4 4 0 0 0-3.5 5.5L4.5 17.5a2 2 0 0 0 3 3l7-7A4 4 0 0 0 20 9l-3 2-2-2z'],
+  '🎫': ['#d9822b','M4 7h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4z M14 7v10'],
+  '🚇': ['#3f9a8f','M7 3h10a2 2 0 0 1 2 2v10a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V5a2 2 0 0 1 2-2z M5 11h14 M9 15h.01 M15 15h.01 M8 21l2-3 M16 21l-2-3'],
+  '💳': ['#4a6fa5','M3 6h18v12H3z M3 10h18 M7 15h3'],
+  '🌱': ['#2f9e6b','M12 21v-9 M12 12c0-4-3-6-7-6 0 4 3 6 7 6z M12 14c0-3 2-5 6-5 0 3-2 5-6 5z'],
+  '❤': ['#d6453d','M12 20s-8-5-8-11a4.5 4.5 0 0 1 8-2.5A4.5 4.5 0 0 1 20 9c0 6-8 11-8 11z'],
+  '⭐': ['#c9a227','M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z'],
+  '🔔': ['#e08a1e','M6 17v-6a6 6 0 0 1 12 0v6l2 2H4z M10 21h4'],
+  '⚽': ['#2f9e6b','M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 8l4 3-1.5 4.5h-5L8 11z'],
+  '🎵': ['#8a5cc7','M9 18V6l11-2v12 M9 18a3 3 0 1 1-3-3 M20 16a3 3 0 1 1-3-3'],
+  '🧳': ['#a07c3b','M6 8h12v12H6z M9 8V5h6v3 M9 12v5 M15 12v5'],
+  '🛏': ['#5b7bd5','M3 18V7 M3 14h18v4 M3 14v-3a2 2 0 0 1 2-2h5a3 3 0 0 1 3 3v2'],
+  '🚲': ['#3f9a8f','M6 19a3.5 3.5 0 1 0 .01 0z M18 19a3.5 3.5 0 1 0 .01 0z M6 19l4-8h5l3 8 M10 11L8.5 8H7 M13 8h2'],
+  '🌸': ['#d0629a','M12 12m-2 0a2 2 0 1 0 4 0 2 2 0 1 0-4 0 M12 10c-2-2-2-5 0-6 2 1 2 4 0 6z M14 12c2-2 5-2 6 0-1 2-4 2-6 0z M12 14c2 2 2 5 0 6-2-1-2-4 0-6z M10 12c-2 2-5 2-6 0 1-2 4-2 6 0z'],
+  '☂': ['#2c9ac4','M3 12a9 9 0 0 1 18 0z M12 12v6a2 2 0 0 0 4 0'],
+  '🎥': ['#c4566b','M3 7h12v10H3z M15 11l6-3v8l-6-3'],
   '❓': ['#7d8794','M9 9a3 3 0 1 1 4 2.8c-.7.4-1 1-1 1.7 M12 17h.01']
 };
+const ICON_PALETTE = Object.keys(ICON_SVG).filter(k => k !== '❓');
+function iconPickHTML(sel) {
+  const cur = String(sel || '').replace(/\uFE0F/g, '');
+  return `<div class="ipick" id="ipick">${ICON_PALETTE.map(k => `<button type="button" class="ipb ${k === cur ? 'on' : ''}" data-i="${k}" aria-label="아이콘">${icoHTML({ icon: k }, '34px')}</button>`).join('')}</div>`;
+}
 function icoHTML(c, size) {
   const k = String(c.icon || '').replace(/\uFE0F/g, ''), d = ICON_SVG[k], st = size ? `--s:${size};` : '';
   if (!d) return `<span class="ico em" style="${st}">${c.icon || ''}</span>`;
@@ -642,6 +698,16 @@ const catById = id => db.cats.find(c => c.id === id) || { id, name: '미분류',
 const isLoan = t => !!catById(t.cat).loan;
 function catsFor(type) { return db.cats.filter(c => c.type === type || c.type === 'both'); }
 function catLabel(c, type) { return c.loan ? (type === 'in' ? '회수' : '대여') : c.name; }
+const CAT_GROUPS = [['food','cafe','shop','cloth','house','trans','tel'], ['med','cult','trip','event','family'], ['ins','bank','loan','etc']];
+function groupedCats(type) {
+  const list = catsFor(type);
+  if (type === 'in') return [list];
+  const gi = c => { const i = CAT_GROUPS.findIndex(g => g.includes(c.id)); return i < 0 ? CAT_GROUPS.length - 1 : i; };
+  const out = CAT_GROUPS.map(() => []);
+  list.forEach(c => out[gi(c)].push(c));
+  out.forEach((g, i) => g.sort((a, b) => { const A = CAT_GROUPS[i].indexOf(a.id), B = CAT_GROUPS[i].indexOf(b.id); return (A < 0 ? 99 : A) - (B < 0 ? 99 : B); }));
+  return out.filter(g => g.length);
+}
 function usageOrder(type) {
   const cutoff = addDays(todayStr(), -150), cnt = {};
   db.tx.forEach(t => { if (t.type === type && t.date >= cutoff) cnt[t.cat] = (cnt[t.cat] || 0) + 1; });
@@ -1251,7 +1317,7 @@ function openInput(opts = {}) {
       <div class="seg" id="iKind"><button data-k="var">변동</button><button data-k="fix">고정</button></div></div>
     ${linkedEv && linkedEv.cal !== 'solar' ? `<div class="linknote">${linkIc} 연결된 일정 · ${esc(linkedEv.title)}</div>` : ''}
     <div class="drop" id="iDrop"></div><div class="subs" id="iSubs"></div>
-    <div class="iconwrap"><div class="iconbar" id="iBar"></div><div class="addwrap" id="iAdd"></div></div></div>
+    <div class="iconwrap catwrap"><div class="iconbar" id="iBar"></div></div></div>
     <button class="chip hide" id="iAddEv" data-part="addev" style="margin:8px 0 0">＋ 일정도 같이 기록</button>
     <div class="evsec hide" id="iEv">
       <div class="parthd ev"><span class="pk">D</span><b>일정</b><button class="pdel hide" id="iEvDel" data-part="delev" aria-label="일정 부분 삭제">✕</button></div>
@@ -1288,8 +1354,9 @@ function openInput(opts = {}) {
     $$('#iBar .icb', m).forEach(b => b.classList.toggle('on', b.dataset.c === st.cat));
   }
   function paintBar() {
-    q('#iBar').innerHTML = usageOrder(st.type).map(c => `<button class="icb" data-c="${c.id}">${icoHTML(c, '38px')}<span class="n">${esc(catLabel(c, st.type))}</span></button>`).join('');
-    q('#iAdd').innerHTML = `<button class="icb add" data-newcat="1" aria-label="항목 추가·수정"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">추가·수정</span></button>`;
+    const addB = `<button class="icb add" data-newcat="1" aria-label="항목 추가·수정"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">추가·수정</span></button>`;
+    const gs = groupedCats(st.type);
+    q('#iBar').innerHTML = gs.map((g, gi) => '<div class="grow">' + g.map(c => `<button class="icb" data-c="${c.id}">${icoHTML(c, '34px')}<span class="n">${esc(catLabel(c, st.type))}</span></button>`).join('') + (gi === gs.length - 1 ? addB : '') + '</div>').join('<i class="gsep"></i>');
   }
   function setCat(id, auto) {
     st.cat = id; if (!auto) st.manual = true;
@@ -1303,7 +1370,7 @@ function openInput(opts = {}) {
     q('#iEvDel').classList.toggle('hide', !isComb()); q('#iTxDel').classList.toggle('hide', !isComb());
     q('#iAddEv').classList.toggle('hide', !(edit && !linkedEv && st.mode !== 'both'));
     q('#iEvTypes').innerHTML = evTypeList().filter(t => t.id !== 'holiday').map(t => `<button class="icb ${st.evType === t.id ? 'on' : ''}" data-et="${t.id}" style="--c:${t.color}">${evIco(t, '34px')}<span class="n">${esc(t.name)}</span></button>`).join('');
-    q('#iEvAdd').innerHTML = `<button class="icb add" data-newtype="1" aria-label="일정 종류 추가"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">추가</span></button>`;
+    q('#iEvAdd').innerHTML = `<button class="icb add" data-newtype="1" aria-label="일정 종류 추가·수정"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">추가·수정</span></button>`;
     q('#iEvWrap').classList.toggle('hide', st.mode !== 'both');
     q('#iEvD').classList.toggle('hide', st.evSame);
   }
@@ -1331,7 +1398,7 @@ function openInput(opts = {}) {
       else { st.mode = b.dataset.md; paintMode(); }
     }
     else if (b.dataset.et) { st.evType = b.dataset.et; paintMode(); }
-    else if (b.dataset.newtype) openEvType(id => { st.evType = id; paintMode(); });
+    else if (b.dataset.newtype) openEvTypePicker((id, isNew) => { if (isNew) st.evType = id; paintMode(); });
     else if (b.dataset.i === 'x') closeModal(m);
     else if (b.dataset.t) { st.type = b.dataset.t; paintType(); }
     else if (b.dataset.k) { st.kind = b.dataset.k; paintKind(); }
@@ -1351,7 +1418,7 @@ function openInput(opts = {}) {
     if (!st.manual) { const sg = suggestCat(st.name, st.type); if (sg) setCat(sg, true); }
   };
 
-  q('#iAdd').addEventListener('click', e => {
+  q('#iBar').addEventListener('click', e => {
     if (!e.target.closest('.icb.add')) return;
     openCatPicker(st.type, (c, isNew) => {
       if (st.cat && !db.cats.some(x => x.id === st.cat)) { st.cat = null; st.sub = ''; }
@@ -1497,7 +1564,7 @@ function openEvent(opts = {}) {
   q('#eLm').value = st.lm; q('#eLd').value = st.ld; q('#eLeap').checked = !!st.leap; q('#eLy').value = st.ly;
   function paint() {
     q('#eBar').innerHTML = evTypeList().map(t => `<button class="icb ${st.type === t.id ? 'on' : ''}" data-t="${t.id}" style="--c:${t.color}">${evIco(t, '38px')}<span class="n">${esc(t.name)}</span></button>`).join('');
-    q('#eAdd').innerHTML = `<button class="icb add" data-newtype="1" aria-label="종류 추가"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">추가</span></button>`;
+    q('#eAdd').innerHTML = `<button class="icb add" data-newtype="1" aria-label="종류 추가·수정"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">추가·수정</span></button>`;
     $$('#eCal button', m).forEach(b => b.classList.toggle('on', b.dataset.c === st.cal));
     const reps = [['none', '안 함'], ['yearly', '매년']].concat(st.cal === 'solar' ? [['monthly', '매월']] : []);
     if (!reps.find(r => r[0] === st.repeat)) st.repeat = 'none';
@@ -1518,7 +1585,7 @@ function openEvent(opts = {}) {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.md) { if (b.dataset.md !== 'ev') { const d = q('#eDate').value || base, nm = q('#eTitle').value.trim(); closeModal(m); openInput({ date: d, name: nm, mode: b.dataset.md }); } }
     else if (b.dataset.e === 'x') closeModal(m);
-    else if (b.dataset.newtype) openEvType(id => { st.type = id; paint(); });
+    else if (b.dataset.newtype) openEvTypePicker((id, isNew) => { if (isNew) st.type = id; paint(); });
     else if (b.dataset.t) { st.type = b.dataset.t; paint(); }
     else if (b.dataset.c) { st.cal = b.dataset.c; paint(); }
     else if (b.dataset.r) { st.repeat = b.dataset.r; paint(); }
@@ -1584,30 +1651,56 @@ Object.assign(ACT, {
 });
 
 /* ---------- 일정 종류 추가 (일정 입력 줄 맨 끝 ＋) ---------- */
-const EV_PALETTE = ['🎂', '💍', '🕯️', '🏖️', '🎉', '✈️', '🏥', '🎓', '💼', '🛠️', '📌', '🏃', '🎁', '👪', '🐶', '📚'];
 const EV_COLORS = ['#d6453d', '#e08a1e', '#c9a227', '#2f9e6f', '#2c9ac4', '#4a6fa5', '#8a5cc7', '#d6568a'];
-function openEvType(done) {
-  const st = { icon: '📌', color: EV_COLORS[3] };
-  const m = openModal(`<div class="ph"><b>일정 종류 추가</b><span class="sp"></span><button class="x" data-v="x">✕</button></div>
+function openEvTypePicker(done) {
+  const m = openModal('', '');
+  const paint = () => {
+    $('.panel', m).innerHTML = `<div class="ph"><b>일정 종류 추가·수정</b><span class="sp"></span><button class="x" data-p="x">✕</button></div>
+    <div class="pb"><div class="hint" style="margin:0 0 8px">아이콘을 누르면 이름·아이콘·색을 고칠 수 있어요</div>
+    <div class="pgrid">${evTypeList().map(t => `<button class="icb" data-p="ed" data-id="${t.id}" style="--c:${t.color}">${evIco(t, '38px')}<span class="n">${esc(t.name)}</span></button>`).join('')}
+    <button class="icb add" data-p="new"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">새 종류</span></button></div></div>`;
+  };
+  paint();
+  m.addEventListener('click', e => {
+    const b = e.target.closest('[data-p]'); if (!b) return;
+    if (b.dataset.p === 'x') closeModal(m);
+    else if (b.dataset.p === 'new') openEvType(id => { closeModal(m); done(id, true); });
+    else if (b.dataset.p === 'ed') openEvType(id => { paint(); done(id, false); }, evTypeList().find(t => t.id === b.dataset.id));
+  });
+}
+function openEvType(done, cur) {
+  const builtin = cur && EVENT_TYPES[cur.id];
+  const st = cur ? { icon: cur.icon, color: cur.color } : { icon: '📅', color: EV_COLORS[3] };
+  const m = openModal(`<div class="ph"><b>${cur ? '일정 종류 수정' : '일정 종류 추가'}</b><span class="sp"></span><button class="x" data-v="x">✕</button></div>
   <div class="pb">
-    <div class="row"><input class="fld" id="vIcon" style="flex:none;width:64px;text-align:center;font-size:22px" maxlength="4"><input class="fld" id="vName" placeholder="종류 이름 (예: 생일)" maxlength="8"></div>
-    <div class="chips" style="gap:4px">${EV_PALETTE.map(i => `<button class="chip" style="font-size:18px;padding:2px 6px" data-i="${i}">${i}</button>`).join('')}</div>
+    <div class="row"><span id="vPrev"></span><input type="hidden" id="vIcon"><input class="fld" id="vName" placeholder="종류 이름 (예: 생일)" maxlength="8"></div>
+    ${iconPickHTML(st.icon)}
     <div class="row" id="vCol" style="gap:8px">${EV_COLORS.map(c => `<button data-col="${c}" style="width:30px;height:30px;border-radius:9px;background:${c}"></button>`).join('')}</div>
-    <div class="btns"><span class="sp"></span><button class="btn pri" id="vSave">저장</button></div>
+    <div class="btns">${cur ? `<button class="btn ${builtin ? '' : 'dan'}" id="vDel">${builtin ? '기본값으로' : '삭제'}</button>` : ''}<span class="sp"></span><button class="btn pri" id="vSave">저장</button></div>
   </div>`);
   const q = s => $(s, m);
-  q('#vIcon').value = st.icon;
-  const paint = () => $$('#vCol button', m).forEach(b => { b.style.outline = b.dataset.col === st.color ? '3px solid var(--ink)' : 'none'; b.style.outlineOffset = '2px'; }); paint();
+  q('#vIcon').value = st.icon; if (cur) q('#vName').value = cur.name;
+  const paint = () => { $$('#vCol button', m).forEach(b => { b.style.outline = b.dataset.col === st.color ? '3px solid var(--ink)' : 'none'; b.style.outlineOffset = '2px'; }); q('#vPrev').innerHTML = evIco({ icon: q('#vIcon').value, color: st.color }, '40px'); }; paint();
   m.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.v === 'x') closeModal(m);
-    else if (b.dataset.i) q('#vIcon').value = b.dataset.i;
+    else if (b.dataset.i) { q('#vIcon').value = b.dataset.i; $$('#ipick .ipb', m).forEach(x => x.classList.toggle('on', x === b)); paint(); }
     else if (b.dataset.col) { st.color = b.dataset.col; paint(); }
   });
+  if (cur) q('#vDel').onclick = () => {
+    if (builtin) { delete (db.evOver || {})[cur.id]; }
+    else { db.evTypes = db.evTypes.filter(t => t.id !== cur.id); }
+    persist(); closeModal(m); renderAll(); done(builtin ? cur.id : 'etc');
+  };
   q('#vSave').onclick = () => {
-    const name = q('#vName').value.trim(), icon = q('#vIcon').value.trim() || '📌';
+    const name = q('#vName').value.trim(), icon = q('#vIcon').value.trim() || '📅';
     if (!name) { toast('이름을 입력해 주세요'); return; }
-    if (evTypeList().some(t => t.name === name)) { toast('이미 있는 종류예요'); return; }
+    if (evTypeList().some(t => t.name === name && (!cur || t.id !== cur.id))) { toast('이미 있는 종류예요'); return; }
+    if (cur) {
+      if (builtin) { db.evOver = db.evOver || {}; db.evOver[cur.id] = { name, icon, color: st.color }; }
+      else Object.assign(db.evTypes.find(t => t.id === cur.id), { name, icon, color: st.color });
+      persist(); closeModal(m); renderAll(); done(cur.id); return;
+    }
     db.evTypes = db.evTypes || [];
     const t = { id: newId('v'), name, icon, color: st.color };
     db.evTypes.push(t); persist(); closeModal(m); done(t.id);
@@ -1871,7 +1964,6 @@ function bindRestore() {
 }
 
 /* ---------- 분류 관리 ---------- */
-const ICON_PALETTE = ['🏦', '🛡️', '🍚', '🍜', '🍔', '☕', '🍺', '🛒', '🛍️', '👕', '👟', '🚌', '🚗', '⛽', '🏠', '💡', '📱', '💊', '🏥', '🎬', '🎮', '📚', '🎓', '✈️', '🏨', '💐', '🎁', '👪', '👶', '🐶', '💄', '💇', '🏋️', '🧾', '💰', '💼', '↩️', '➕', '📦', '🔧', '🚬', '🎫'];
 function openCats() {
   const m = openModal('', 'full'); m.id = 'catPanel';
   const paint = () => {
@@ -1916,19 +2008,19 @@ function editCat(cat, done, presetType) {
   const st = cat ? { ...cat, subs: [...cat.subs] } : { name: '', icon: '📦', type: presetType || 'out', subs: [] };
   const m = openModal(`<div class="ph"><b>${cat ? '분류 수정' : '새 분류'}</b><span class="sp"></span><button class="x" data-e="x">✕</button></div>
   <div class="pb">
-    <div class="row"><input class="fld" id="cIcon" style="flex:none;width:64px;text-align:center;font-size:22px" maxlength="4"><input class="fld" id="cName" placeholder="분류 이름" maxlength="10" ${cat && cat.loan ? 'disabled' : ''}></div>
-    <div class="chips" style="gap:4px" id="cPal">${ICON_PALETTE.map(i => `<button class="chip" style="font-size:18px;padding:2px 6px" data-i="${i}">${i}</button>`).join('')}</div>
+    <div class="row"><span id="cPrev"></span><input type="hidden" id="cIcon"><input class="fld" id="cName" placeholder="분류 이름" maxlength="10" ${cat && cat.loan ? 'disabled' : ''}></div>
+    ${iconPickHTML(st.icon)}
     <div class="row ${cat || presetType ? 'hide' : ''}"><label>구분</label><div class="seg" id="cType"><button data-t="out">지출</button><button data-t="in">수입</button></div></div>
     <div class="row"><label>세부 항목</label><input class="fld" id="cSubs" placeholder="쉼표로 구분 (예: 식당, 배달, 장보기)"></div>
     <div class="btns"><button class="btn dan ${cat && !cat.loan ? '' : 'hide'}" id="cDel">삭제</button><span class="sp"></span><button class="btn pri" id="cSave">저장</button></div>
   </div>`);
   const q = s => $(s, m);
-  q('#cIcon').value = st.icon; q('#cName').value = st.loan ? '대여/회수' : st.name; q('#cSubs').value = st.subs.join(', ');
+  q('#cIcon').value = st.icon; q('#cPrev').innerHTML = icoHTML({ icon: st.icon }, '40px'); q('#cName').value = st.loan ? '대여/회수' : st.name; q('#cSubs').value = st.subs.join(', ');
   const paintT = () => $$('#cType button', m).forEach(b => b.classList.toggle('on', b.dataset.t === st.type)); paintT();
   m.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.e === 'x') closeModal(m);
-    else if (b.dataset.i) q('#cIcon').value = b.dataset.i;
+    else if (b.dataset.i) { q('#cIcon').value = b.dataset.i; $$('#ipick .ipb', m).forEach(x => x.classList.toggle('on', x === b)); q('#cPrev').innerHTML = icoHTML({ icon: b.dataset.i }, '40px'); }
     else if (b.dataset.t) { st.type = b.dataset.t; paintT(); }
   });
   q('#cSave').onclick = () => {
