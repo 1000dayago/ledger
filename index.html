@@ -281,6 +281,9 @@ select.fld{appearance:none}
 .evtypes{display:flex;gap:4px;overflow-x:auto;margin:4px 0;scrollbar-width:none}
 .icb.sm{width:auto;min-width:54px;padding:3px 4px;display:flex;flex-direction:column;align-items:center}
 .icb.sm .ico{margin:0 auto 1px}
+
+.pgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px 4px}
+.pgrid .icb{width:auto}
 </style>
 </head>
 <body>
@@ -291,7 +294,7 @@ select.fld{appearance:none}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '1.7.1';
+const APP_VERSION = '1.8.0';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -1010,8 +1013,9 @@ const MODE_SVG = {
   ev: 'M4 6h16v14H4z M4 10h16 M8 3v4 M16 3v4',
   both: 'M3 11h9v9H3z M3 14h9 M9 5h12v10h-6 M9 8h12 M13 3v3 M17 3v3'
 };
-const MODE_NAME = { tx: '돈', ev: '일정', both: '함께' };
-const modesHTML = a => ['tx', 'ev', 'both'].map(k => `<button class="md ${a === k ? 'on' : ''}" data-md="${k}" aria-label="${MODE_NAME[k]}"><svg viewBox="0 0 24 24"><path d="${MODE_SVG[k]}"/></svg><small>${MODE_NAME[k]}</small></button>`).join('');
+const MODE_NAME = { tx: 'M', ev: 'D', both: 'M+D' };
+const MODE_TIP = { tx: '돈 (MONEY)', ev: '일정 (DATE)', both: '돈 + 일정' };
+const modesHTML = a => ['tx', 'ev', 'both'].map(k => `<button class="md ${a === k ? 'on' : ''}" data-md="${k}" aria-label="${MODE_TIP[k]}" title="${MODE_TIP[k]}"><svg viewBox="0 0 24 24"><path d="${MODE_SVG[k]}"/></svg><small>${MODE_NAME[k]}</small></button>`).join('');
 const linkIc = '<svg class="lkic" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1 M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>';
 function askLink(msg, btns, cb) {
   const m = openModal(`<div class="ph"><b>연결된 항목</b><span class="sp"></span><button class="x" data-q="x">✕</button></div>
@@ -1116,7 +1120,12 @@ function openInput(opts = {}) {
 
   q('#iBar').addEventListener('click', e => {
     if (!e.target.closest('.icb.add')) return;
-    editCat(null, nc => { paintBar(); if (nc) { setCat(nc.id); const bt = $(`.icb[data-c="${nc.id}"]`, m); if (bt) bt.scrollIntoView({ inline: 'center', block: 'nearest' }); } }, st.type);
+    openCatPicker(st.type, (c, isNew) => {
+      if (st.cat && !db.cats.some(x => x.id === st.cat)) { st.cat = null; st.sub = ''; }
+      paintBar();
+      if (isNew && c) { setCat(c.id); const bt = $(`.icb[data-c="${c.id}"]`, m); if (bt) bt.scrollIntoView({ inline: 'center', block: 'nearest' }); }
+      else { if (st.cat) { const cc = catById(st.cat); if (st.sub && !cc.subs.includes(st.sub)) st.sub = ''; } paintCat(); }
+    });
   });
 
   /* 아이콘 줄: 탭=선택, 위로 끌기=드래그 등록, 길게 누르기=세부 항목 */
@@ -1600,6 +1609,23 @@ function openCats() {
     }
   });
 }
+/* 입력창의 ＋ 박스: 분류 추가·수정 */
+function openCatPicker(type, done) {
+  const m = openModal('', '');
+  const paint = () => {
+    $('.panel', m).innerHTML = `<div class="ph"><b>${type === 'in' ? '수입' : '지출'} 항목 추가·수정</b><span class="sp"></span><button class="x" data-p="x">✕</button></div>
+    <div class="pb"><div class="hint" style="margin:0 0 8px">아이콘을 누르면 이름·아이콘·세부 항목을 고칠 수 있어요</div>
+    <div class="pgrid">${catsFor(type).map(c => `<button class="icb" data-p="ed" data-id="${c.id}">${icoHTML(c, '38px')}<span class="n">${esc(catLabel(c, type))}</span></button>`).join('')}
+    <button class="icb add" data-p="new"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">새 항목</span></button></div></div>`;
+  };
+  paint();
+  m.addEventListener('click', e => {
+    const b = e.target.closest('[data-p]'); if (!b) return;
+    if (b.dataset.p === 'x') closeModal(m);
+    else if (b.dataset.p === 'new') editCat(null, (c, isNew) => { closeModal(m); done(c, true); }, type);
+    else if (b.dataset.p === 'ed') { const c = db.cats.find(x => x.id === b.dataset.id); if (c) editCat(c, () => { paint(); done(c, false); }); }
+  });
+}
 function editCat(cat, done, presetType) {
   const st = cat ? { ...cat, subs: [...cat.subs] } : { name: '', icon: '📦', type: presetType || 'out', subs: [] };
   const m = openModal(`<div class="ph"><b>${cat ? '분류 수정' : '새 분류'}</b><span class="sp"></span><button class="x" data-e="x">✕</button></div>
@@ -1630,7 +1656,7 @@ function editCat(cat, done, presetType) {
       const lastSame = db.cats.map((c, i) => c.type === st.type ? i : -1).filter(i => i >= 0).pop();
       db.cats.splice((lastSame == null ? db.cats.length : lastSame) + 1, 0, nc);
     }
-    persist(); closeModal(m); done(cat || db.cats.find(c => c.name === name && c.type === st.type)); renderAll();
+    persist(); closeModal(m); done(cat || db.cats.find(c => c.name === name && c.type === st.type), !cat); renderAll();
   };
   const del = q('#cDel'); let armed = 0;
   del.onclick = () => {
