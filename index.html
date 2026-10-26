@@ -541,6 +541,14 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 .toast{z-index:9999}
 
 .cntrow{display:flex;align-items:center;gap:8px;margin:8px 2px;font-size:14px;font-weight:700}
+
+/* v2.10 패턴 잠금 */
+.lk-pat{width:min(78vw,320px);height:min(78vw,320px);touch-action:none;user-select:none;-webkit-user-select:none}
+.lk-pat .pd{fill:var(--card);stroke:var(--sub);stroke-width:3;transition:.1s}
+.lk-pat .pd.on{fill:var(--acc);stroke:var(--acc);r:16}
+.lk-pat .pl{fill:none;stroke:var(--acc);stroke-width:7;stroke-linecap:round;stroke-linejoin:round;opacity:.55;pointer-events:none}
+.lk-pat.shake{animation:shk .3s}
+.lk-bot{display:flex;gap:10px;justify-content:center}
 </style>
 </head>
 <body>
@@ -551,7 +559,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.9.0';
+const APP_VERSION = '2.10.0';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -1413,7 +1421,7 @@ Object.assign(ACT, {
   hero() { S().heroMin = !S().heroMin; persist(); renderTop(); },
   today() { const t = todayStr(); ST.key = keyOf(t); selectDate(t); },
   hide() { S().hideSum = !S().hideSum; persist(); renderAll(); toast(S().hideSum ? '금액을 숨겼어요' : '금액을 보여줘요', 1000); },
-  lock() { if (pinOn()) lockNow(); else { toast('먼저 PIN을 만들어요'); pinSetup(); } },
+  lock() { if (pinOn()) lockNow(); else pinToggle(); },
   cell(t) { selectDate(t.dataset.d); },
   goto(t) { const d = t.dataset.d; ST.key = keyOf(d); ST.sel = d; if (ST.view === 'month') ST.sheet = 'half'; renderAll(); if (ST.view !== 'day') ensureVisible(); },
   ban(t) { ST.off[t.dataset.k] = true; renderAll(); },
@@ -1457,8 +1465,8 @@ const MODE_NAME = { tx: 'M', ev: 'D', both: 'M+D' };
 const MODE_TIP = { tx: '돈 (MONEY)', ev: '일정 (DATE)', both: '돈 + 일정' };
 const modesHTML = a => ['tx', 'ev', 'both'].map(k => `<button class="md ${a === k ? 'on' : ''}" data-md="${k}" aria-label="${MODE_TIP[k]}" title="${MODE_TIP[k]}"><svg viewBox="0 0 24 24"><path d="${MODE_SVG[k]}"/></svg><small>${MODE_NAME[k]}</small></button>`).join('');
 const linkIc = '<svg class="lkic" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1 M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>';
-function askLink(msg, btns, cb) {
-  const m = openModal(`<div class="ph"><b>연결된 항목</b><span class="sp"></span><button class="x" data-q="x">✕</button></div>
+function askLink(msg, btns, cb, title = '연결된 항목') {
+  const m = openModal(`<div class="ph"><b>${esc(title)}</b><span class="sp"></span><button class="x" data-q="x">✕</button></div>
   <div class="pb"><p style="margin:6px 0 14px;line-height:1.5">${esc(msg)}</p><div class="btns">${btns.map(b => `<button class="btn ${b.cls || ''}" data-q="${b.k}">${b.label}</button>`).join('')}</div></div>`);
   m.addEventListener('click', e => { const b = e.target.closest('[data-q]'); if (!b) return; closeModal(m); if (b.dataset.q !== 'x') cb(b.dataset.q); });
 }
@@ -2176,8 +2184,8 @@ function renderSettings() {
     <div class="list-item" data-s="evtog"><div class="e"><span class="ico" style="--c:#d9822b;--s:30px"><svg viewBox="0 0 24 24"><path d="M4 6h16v14H4z M4 10h16 M8 3v4 M16 3v4"/></svg></span></div><div class="m">내 일정<small>${db.events.length}개 · 휴무일·기일·기념일</small></div><span style="color:var(--sub)">${ST.evOpen ? '⌃' : '⌄'}</span></div>
     ${ST.evOpen ? evs.map(ev => `<div class="list-item sub" data-s="ev" data-id="${ev.id}"><i style="width:8px;height:8px;border-radius:4px;background:${evType(ev.type).color}"></i><div class="m">${esc(ev.title)}<small>${evType(ev.type).name} · ${evRule(ev)}</small></div><span style="color:var(--sub)">›</span></div>`).join('') + '<div class="btns"><button class="btn" data-s="evnew">+ 일정 추가</button></div>' : ''}
     <div class="sec">데이터 · 보안 · 앱</div>
-    <div class="list-item"><div class="m">PIN 잠금 (6자리)<small>앱을 열 때 숫자 6개만 누르면 바로 열려요</small></div>${sw(pinOn(), 'pin')}</div>
-    ${pinOn() ? `<div class="row"><label style="width:80px">잠금 시점</label><div class="seg">${[[0, '나가면 즉시'], [60, '1분 뒤'], [300, '5분 뒤']].map(([v, n]) => `<button data-s="pinafter" data-v="${v}" class="${(pinCfg().after || 0) === v ? 'on' : ''}">${n}</button>`).join('')}</div><span class="sp"></span><button class="btn" data-s="pinchg">PIN 변경</button></div>` : ''}
+    <div class="list-item"><div class="m">앱 잠금${pinOn() ? ` (${lockMode(pinCfg()) === 'pat' ? '패턴' : '6자리'})` : ''}<small>${pinOn() && lockMode(pinCfg()) === 'pat' ? '앱을 열 때 패턴을 그리면 바로 열려요' : '숫자 6개 또는 패턴으로 앱을 잠가요'}</small></div>${sw(pinOn(), 'pin')}</div>
+    ${pinOn() ? `<div class="row"><label style="width:80px">잠금 시점</label><div class="seg">${[[0, '나가면 즉시'], [60, '1분 뒤'], [300, '5분 뒤']].map(([v, n]) => `<button data-s="pinafter" data-v="${v}" class="${(pinCfg().after || 0) === v ? 'on' : ''}">${n}</button>`).join('')}</div><span class="sp"></span><button class="btn" data-s="pinchg">방식·암호 변경</button></div>` : ''}
     <div class="kv"><span>내역 ${db.tx.length}건</span><span>마지막 백업 ${db.lastBackup || '없음'}</span></div>
     <div class="btns"><button class="btn pri" data-s="backup">백업 저장</button><button class="btn" data-s="restore">복원</button><button class="btn" data-s="upd">업데이트 확인</button><span class="sp"></span><button class="btn dan" data-s="resetmenu"><svg class="lkic" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 3-6.2 M4 4v4h4"/></svg> 초기화</button></div>
     <div class="hint">버전 ${APP_VERSION} · 백업 파일은 폰의 다운로드 폴더에 저장돼요. 폰을 바꾸거나 브라우저 데이터를 지우기 전에 꼭 백업하세요.</div>
@@ -2570,25 +2578,79 @@ function pinPad({ title, sub = '', cancel = false, forgot = false, onFull }) {
   return api;
 }
 
+/* 패턴 화면 (3×3). 손을 떼면 확인. 최소 4점 */
+function patPad({ title, sub = '', cancel = false, forgot = false, onFull }) {
+  const el = document.createElement('div'); el.className = 'lockscr';
+  const C = [50, 150, 250], pts = Array.from({ length: 9 }, (_, i) => [C[i % 3], C[Math.floor(i / 3)]]);
+  el.innerHTML = `<div class="lk-top"><div class="lk-ic"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="6" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/><circle cx="6" cy="18" r="1.6"/><circle cx="12" cy="18" r="1.6"/><circle cx="18" cy="18" r="1.6"/></svg></div>
+    <b class="lk-t"></b><div class="lk-s"></div></div>
+    <svg class="lk-pat" viewBox="0 0 300 300"><polyline class="pl" points=""/>${pts.map(([x, y], i) => `<circle class="pd" data-i="${i}" cx="${x}" cy="${y}" r="13"/>`).join('')}</svg>
+    <div class="lk-bot">${cancel ? '<button class="lk-forgot" data-k="x">취소</button>' : ''}${forgot ? '<button class="lk-forgot" data-k="forgot">패턴을 잊었어요</button>' : ''}${!cancel && !forgot ? '<span class="lk-forgot"></span>' : ''}</div>`;
+  document.body.appendChild(el);
+  const svg = $('.lk-pat', el), pl = $('.pl', el), $t = $('.lk-t', el), $s = $('.lk-s', el), dots = $$('.pd', el);
+  let seq = [], busy = false, drawing = false;
+  const api = {
+    el, close() { el.remove(); },
+    set(t, s) { $t.textContent = t; $s.textContent = s || ''; $s.classList.remove('bad'); },
+    bad(msg) { $s.textContent = msg; $s.classList.add('bad'); svg.classList.remove('shake'); void svg.getBoundingClientRect(); svg.classList.add('shake'); if (navigator.vibrate) try { navigator.vibrate(40); } catch (e) { } },
+    onForgot: null, onCancel: null
+  };
+  api.set(title, sub);
+  const pos = ev => { const r = svg.getBoundingClientRect(); return [(ev.clientX - r.left) * 300 / r.width, (ev.clientY - r.top) * 300 / r.height]; };
+  const paint = cur => {
+    dots.forEach((d, i) => d.classList.toggle('on', seq.includes(i)));
+    const p = seq.map(i => pts[i].join(',')); if (cur && seq.length) p.push(cur.join(','));
+    pl.setAttribute('points', p.join(' '));
+  };
+  const add = i => {
+    if (seq.includes(i)) return;
+    if (seq.length) { /* 일직선 위 중간 점은 같이 이어 준다 */
+      const a = seq[seq.length - 1], ax = a % 3, ay = Math.floor(a / 3), bx = i % 3, by = Math.floor(i / 3);
+      if ((ax + bx) % 2 === 0 && (ay + by) % 2 === 0) { const mid = ((ay + by) / 2) * 3 + (ax + bx) / 2; if (!seq.includes(mid)) seq.push(mid); }
+    }
+    seq.push(i);
+  };
+  const hit = ([x, y]) => pts.findIndex(([px, py]) => Math.hypot(px - x, py - y) < 34);
+  svg.style.touchAction = 'none';
+  svg.addEventListener('pointerdown', e => { if (busy) return; drawing = true; seq = []; try { svg.setPointerCapture(e.pointerId); } catch (x) { } const p = pos(e), h = hit(p); if (h >= 0) add(h); paint(p); e.preventDefault(); });
+  svg.addEventListener('pointermove', e => { if (!drawing) return; const p = pos(e), h = hit(p); if (h >= 0) add(h); paint(p); });
+  const end = async () => {
+    if (!drawing) return; drawing = false; paint();
+    if (seq.length < 4) { if (seq.length) api.bad('점을 4개 이상 이어 주세요'); seq = []; setTimeout(() => paint(), 350); return; }
+    busy = true; const v = seq.join('-');
+    try { await onFull(v, api); } finally { busy = false; setTimeout(() => { seq = []; if (el.isConnected) paint(); }, 350); }
+  };
+  svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', end);
+  el.addEventListener('click', e => {
+    const b = e.target.closest('[data-k]'); if (!b) return;
+    if (b.dataset.k === 'x') { api.close(); if (api.onCancel) api.onCancel(); }
+    else if (b.dataset.k === 'forgot' && api.onForgot) api.onForgot();
+  });
+  return api;
+}
+const lockMode = c => (c && c.mode) || 'pin';
+const lockWord = c => lockMode(c) === 'pat' ? '패턴' : 'PIN';
+const makePad = (mode, o) => mode === 'pat' ? patPad(o) : pinPad(o);
+
 /* ---------- 잠금 화면 ---------- */
 function lockNow() {
   const cfg = pinCfg(); if (!cfg || $('.lockscr.main')) return;
-  const api = pinPad({
-    title: '비밀번호 6자리', forgot: true,
+  const api = makePad(lockMode(cfg), {
+    title: lockMode(cfg) === 'pat' ? '패턴을 그려 주세요' : '비밀번호 6자리', forgot: true,
     onFull: async (pin, a) => {
       const c = pinCfg(); if (!c) { a.close(); return; }
       if (c.until && Date.now() < c.until) { a.bad(`${Math.ceil((c.until - Date.now()) / 1000)}초 뒤에 다시 시도해 주세요`); return; }
       if (await pinHash(pin, c.salt) === c.hash) { c.fails = 0; c.until = 0; pinSave(c); a.close(); return; }
       c.fails = (c.fails || 0) + 1;
       if (c.fails >= 5) { c.fails = 0; c.until = Date.now() + 30000; a.bad('5번 틀렸어요. 30초 뒤에 다시 시도해 주세요'); }
-      else a.bad(`PIN이 달라요 (${c.fails}/5)`);
+      else a.bad(`${lockWord(c)}이 달라요 (${c.fails}/5)`);
       pinSave(c);
     }
   });
   api.el.classList.add('main');
   api.onForgot = () => {
     const f = document.createElement('div'); f.className = 'lk-sheet';
-    f.innerHTML = `<div class="lk-box"><b>PIN을 잊으셨나요?</b><p>PIN은 찾아드릴 수 없어요. 앱 데이터를 모두 지우고 처음 상태로 돌린 뒤, 저장해 둔 백업 파일로 복원할 수 있어요.</p>
+    f.innerHTML = `<div class="lk-box"><b>${lockWord(cfg)}을(를) 잊으셨나요?</b><p>${lockWord(cfg)}은(는) 찾아드릴 수 없어요. 앱 데이터를 모두 지우고 처음 상태로 돌린 뒤, 저장해 둔 백업 파일로 복원할 수 있어요.</p>
       <div class="btns"><button class="btn" data-f="no">돌아가기</button><button class="btn dan" data-f="yes">데이터 지우고 초기화</button></div></div>`;
     api.el.appendChild(f);
     f.addEventListener('click', ev => {
@@ -2602,33 +2664,38 @@ function lockNow() {
 }
 
 /* ---------- 설정에서 쓰는 동작 ---------- */
-function pinSetup(done) {
-  let first = null;
-  const api = pinPad({
-    title: '새 PIN 6자리', sub: '숫자 6개를 누르면 돼요', cancel: true,
+function pinSetup(done, mode = 'pin') {
+  let first = null; const pat = mode === 'pat', W = pat ? '패턴' : 'PIN';
+  const t0 = pat ? '새 패턴 그리기' : '새 PIN 6자리', s0 = pat ? '점 4개 이상을 이어 주세요' : '숫자 6개를 누르면 돼요';
+  const api = makePad(mode, {
+    title: t0, sub: s0, cancel: true,
     onFull: async (pin, a) => {
-      if (first === null) { first = pin; a.set('한 번 더 입력', '확인을 위해 같은 PIN을 다시 눌러 주세요'); return; }
-      if (pin !== first) { first = null; a.set('새 PIN 6자리', ''); a.bad('두 번이 달라요. 처음부터 다시 눌러 주세요'); return; }
+      if (first === null) { first = pin; a.set('한 번 더 입력', `확인을 위해 같은 ${W}을 다시 ${pat ? '그려' : '눌러'} 주세요`); return; }
+      if (pin !== first) { first = null; a.set(t0, ''); a.bad('두 번이 달라요. 처음부터 다시 해 주세요'); return; }
       const old = pinCfg(), salt = Math.random().toString(36).slice(2) + Date.now().toString(36);
-      pinSave({ salt, hash: await pinHash(pin, salt), after: old ? old.after : 60, fails: 0, until: 0 });
-      a.close(); toast('PIN을 설정했어요'); if (done) done();
+      pinSave({ salt, hash: await pinHash(pin, salt), mode, after: old ? old.after : 60, fails: 0, until: 0 });
+      a.close(); toast(`${W}을 설정했어요`); if (done) done();
     }
   });
   api.onCancel = () => { if (done) done(); };
 }
 function pinVerify(title, ok) {
-  const api = pinPad({
-    title, sub: '현재 PIN을 눌러 주세요', cancel: true,
+  const c0 = pinCfg();
+  const api = makePad(lockMode(c0), {
+    title, sub: `현재 ${lockWord(c0)}을 ${lockMode(c0) === 'pat' ? '그려' : '눌러'} 주세요`, cancel: true,
     onFull: async (pin, a) => {
       const c = pinCfg(); if (!c) { a.close(); ok(); return; }
-      if (await pinHash(pin, c.salt) === c.hash) { a.close(); ok(); } else a.bad('PIN이 달라요');
+      if (await pinHash(pin, c.salt) === c.hash) { a.close(); ok(); } else a.bad(`${lockWord(c)}이 달라요`);
     }
   });
   api.onCancel = () => { };
 }
+function pickLockMode(cb) {
+  askLink('앱을 열 때 쓸 잠금 방식을 골라 주세요.', [{ k: 'pin', label: '비밀번호 6자리' }, { k: 'pat', label: '패턴' }], cb, '잠금 방식');
+}
 const pinOn = () => !!pinCfg();
-function pinToggle() { if (pinOn()) pinVerify('PIN 끄기', () => { pinSave(null); toast('PIN 잠금을 껐어요'); renderSettings(); }); else pinSetup(() => renderSettings()); }
-function pinChange() { pinVerify('PIN 변경', () => pinSetup(() => renderSettings())); }
+function pinToggle() { if (pinOn()) pinVerify('잠금 끄기', () => { pinSave(null); toast('앱 잠금을 껐어요'); renderSettings(); }); else pickLockMode(m => pinSetup(() => renderSettings(), m)); }
+function pinChange() { pinVerify('잠금 변경', () => pickLockMode(m => pinSetup(() => renderSettings(), m))); }
 function pinAfter(sec) { const c = pinCfg(); if (!c) return; c.after = +sec; pinSave(c); renderSettings(); }
 
 /* 앱을 나갔다가 돌아올 때 다시 잠금 */
