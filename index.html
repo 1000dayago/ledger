@@ -496,7 +496,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.3.11';
+const APP_VERSION = '2.3.12';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -1311,7 +1311,7 @@ function openInput(opts = {}) {
   <div class="pb">
     <div class="txsec" id="iTxSec"><div class="parthd tx hide" id="iTxHd"><span class="pk">M</span><b>수입 · 지출</b><button class="pdel hide" id="iTxDel" data-part="deltx" aria-label="수입·지출 부분 삭제">✕</button></div>
     <div class="amt out" id="iAmt"><span>₩</span><input id="iAmount" inputmode="numeric" placeholder="0" autocomplete="off"></div>
-    <div class="chips" style="margin:8px 0 0"><button class="chip" data-add="1000">+1천</button><button class="chip" data-add="10000">+1만</button><button class="chip" data-add="50000">+5만</button><button class="chip" data-add="0">지움</button></div>
+    <div class="chips" style="margin:8px 0 0"><button class="chip" data-add="1000">+1천</button><button class="chip" data-add="10000">+1만</button><button class="chip" data-add="50000">+5만</button><button class="chip" data-add="100000">+10만</button><button class="chip" data-add="1000000">+100만</button><button class="chip" data-add="0">지움</button></div>
     <div class="row"><input class="fld" id="iName" placeholder="가맹점·메모" autocomplete="off"></div>
     <div class="row"><button class="mini" data-i="dm">‹</button><input type="date" class="fld" id="iDate"><button class="mini" data-i="dp">›</button>
       <div class="seg" id="iKind"><button data-k="var">변동</button><button data-k="fix">고정</button></div></div>
