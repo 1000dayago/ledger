@@ -284,17 +284,109 @@ select.fld{appearance:none}
 
 .pgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px 4px}
 .pgrid .icb{width:auto}
+
+/* ---- ＋ 박스는 항상 오른쪽 끝에 고정 (줄이 길어도 안 가려짐) ---- */
+.iconwrap{display:flex;flex:none;border-top:1px solid var(--line);background:var(--card);padding-bottom:env(safe-area-inset-bottom)}
+.iconwrap .iconbar{flex:1;min-width:0;border-top:0;padding-bottom:8px}
+.addwrap{flex:none;display:flex;align-items:flex-start;padding:8px 8px 8px 6px;border-left:1px solid var(--line)}
+.addwrap .icb{width:56px}
+
+/* ============ v2 디자인 (갤럭시 S23 울트라 · 412×915 기준) ============ */
+:root{--bg:#eef1f6;--sh:0 1px 2px rgba(20,32,50,.06),0 2px 8px rgba(20,32,50,.05);--hero1:#17604f;--hero2:#2a9179}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1218;--sh:0 1px 2px rgba(0,0,0,.45);--hero1:#134238;--hero2:#1f6b58}}
+.top{padding:8px 10px 2px;gap:6px}
+.top .nav{width:36px;height:36px;border-radius:12px;background:var(--card);box-shadow:var(--sh);font-size:20px;color:var(--ink)}
+.top .ttl{font-size:23px;font-weight:800;letter-spacing:-.6px;padding:2px 4px}
+.top .ib{width:38px;height:38px;border-radius:12px;background:var(--card);box-shadow:var(--sh);color:var(--ink);font-size:18px;display:inline-flex;align-items:center;justify-content:center}
+.hero{margin:8px 10px 8px;padding:13px 16px 12px;border-radius:24px;color:#fff;background:linear-gradient(135deg,var(--hero1),var(--hero2));box-shadow:0 10px 22px -10px rgba(23,96,79,.7);position:relative;overflow:hidden;cursor:pointer}
+.hero::after{content:'';position:absolute;right:-34px;top:-46px;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.08);pointer-events:none}
+.hero .h1 small{display:block;font-size:11px;opacity:.82}
+.hero .big{display:block;font-size:33px;font-weight:800;letter-spacing:-1.2px;line-height:1.12}
+.hero .big i{font-style:normal;font-size:15px;font-weight:600;margin-left:3px;opacity:.8;letter-spacing:0}
+.pills{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}
+.pl{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:15px;background:rgba(255,255,255,.17);font-size:12px}
+.pl b{font-weight:800;color:#fff;font-size:13px}
+.pl .d{width:8px;height:8px;border-radius:50%;display:inline-block}
+.pl .d.in{background:#ff8c82}.pl .d.out{background:#8db6ff}
+.meter{height:6px;border-radius:3px;background:rgba(255,255,255,.24);margin-top:11px;overflow:hidden}
+.meter i{display:block;height:100%;border-radius:3px;background:#fff}
+.meter.full i{background:#ffb27a}
+.hrow{display:flex;gap:12px;margin-top:8px;font-size:11px;opacity:.92;align-items:baseline}
+.hrow span:first-child{margin-right:auto}
+.hrow b{font-weight:800}.hrow .warn{color:#ffd2ad;font-weight:800;opacity:1}
+.hero.min{padding:9px 16px}.hero.min .pills,.hero.min .hrow,.hero.min .meter{display:none}
+.hero.min .big{font-size:23px}.hero.min .h1 small{display:inline;margin-right:8px}.hero.min .h1{display:flex;align-items:baseline;justify-content:space-between}
+.bar{padding:0 10px 8px;gap:8px}
+.bar .seg{background:var(--card);box-shadow:var(--sh);border-radius:14px;padding:3px}
+.bar .seg button{padding:7px 13px;border-radius:11px;font-size:13px;font-weight:600}
+.bar .seg button.on{background:var(--acc);color:var(--acc-ink);box-shadow:none}
+.bar .chip-btn{padding:9px 13px;border-radius:14px;background:var(--card);box-shadow:var(--sh);font-size:13px;font-weight:600;color:var(--ink)}
+.bar .chip-btn.on{background:var(--acc);color:var(--acc-ink)}
+.banner{background:var(--card);box-shadow:var(--sh);border-radius:14px}
+/* 달력 타일 */
+#cal{padding:0 8px 100px}
+.grid-h{background:var(--bg);font-size:12px;font-weight:700;padding:4px 0 6px}
+.wk{border-top:0;gap:3px;margin-bottom:3px;grid-template-columns:repeat(7,minmax(0,1fr)) 40px}
+.cell{border:0;border-radius:11px;box-shadow:var(--sh);padding:5px 3px 3px;min-height:64px}
+.cell:nth-child(7){border:0}
+.dn{font-size:12px;height:20px;line-height:20px;font-weight:600;padding-left:2px}
+.dn i{min-width:20px;height:20px;line-height:20px;border-radius:10px}
+.cell.today .dn i{background:linear-gradient(135deg,var(--hero1),var(--hero2));color:#fff}
+.cell.sel{outline:0;box-shadow:0 0 0 2px var(--acc),0 6px 14px -4px rgba(29,107,89,.45)}
+.cell.dim{opacity:.32;box-shadow:none;background:transparent}
+.am{display:table;margin:2px 0 0 auto;padding:0 5px;border-radius:7px;font-size:10.5px;line-height:15px;font-weight:700;letter-spacing:-.3px}
+.am.out{background:color-mix(in srgb,var(--out) 13%,transparent)}.am.in{background:color-mix(in srgb,var(--in) 13%,transparent)}
+.cell.over{box-shadow:var(--sh),inset 0 -3px 0 var(--warn)}
+.cell.over.sel{box-shadow:0 0 0 2px var(--acc),inset 0 -3px 0 var(--warn)}
+.ws{border-radius:11px;background:var(--card);box-shadow:var(--sh);padding:4px 3px;font-weight:700;font-size:10px}
+.wk.compact .cell{min-height:30px}
+.wk.bigw{border-radius:20px;overflow:hidden;box-shadow:var(--sh);border-top:0}
+.wr.sel{background:color-mix(in srgb,var(--acc) 11%,var(--card))}
+/* 하단 도크 */
+#dock{position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));height:62px;padding:8px;border-radius:31px;display:flex;align-items:center;gap:8px;z-index:30;background:color-mix(in srgb,var(--card) 90%,transparent);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);box-shadow:0 10px 30px rgba(15,25,40,.24),0 0 0 1px rgba(120,130,150,.16)}
+#dock .sp{flex:1}
+#dock .seg{background:var(--soft);box-shadow:none;border-radius:23px;padding:3px;display:flex}
+#dock .seg button{height:40px;min-width:40px;padding:0 11px;border-radius:20px;font-size:14px;font-weight:700;color:var(--sub)}
+#dock .seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 5px rgba(0,0,0,.18)}
+.todayb{height:46px;padding:0 12px;border-radius:23px;font-size:13px;font-weight:800;color:var(--acc)}
+.fabb{width:auto;height:46px;padding:0 15px;border-radius:23px;font-size:15px;font-weight:800;line-height:1;display:inline-flex;align-items:center;gap:2px;box-shadow:0 4px 12px rgba(0,0,0,.22);color:#fff}
+.fabb em{font-style:normal;font-size:21px;line-height:1;font-weight:600}
+body.sheet-open #dock{bottom:calc(46dvh + 10px)}
+body.sheet-full #dock,body.has-modal #dock{display:none}
+body.sheet-open #cal{padding-bottom:calc(46dvh + 84px)}
+/* 일 시트 */
+#sheet{border-radius:28px 28px 0 0;box-shadow:0 -12px 40px rgba(10,20,40,.28)}
+.sh-h .d{font-size:18px;font-weight:800;letter-spacing:-.4px}
+.trow{border-bottom:0;background:var(--soft);border-radius:14px;margin-bottom:6px;padding:9px 10px}
+.trow.ov{background:color-mix(in srgb,var(--warn) 12%,var(--card))}
+.evrow{border-radius:12px}
+
+/* 주차 표시 */
+.ws .wn{font-style:normal;font-size:10px;font-weight:800;color:var(--acc);background:color-mix(in srgb,var(--acc) 13%,transparent);border-radius:6px;padding:0 4px;align-self:flex-end;margin-bottom:auto;line-height:15px}
+.wkh{display:flex;align-items:baseline;gap:8px;padding:8px 12px 4px;font-size:12px;color:var(--sub)}
+.wkh b{font-size:14px;color:var(--acc);font-weight:800}
+
+/* ---- 다중 선택 ---- */
+.mbar{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:6px;padding:6px 8px;margin:0 0 8px;border-radius:14px;background:var(--acc);color:var(--acc-ink);box-shadow:0 4px 12px rgba(0,0,0,.18)}
+.mbar b{font-size:14px}.mbar .sp{flex:1}
+.mbar button{padding:6px 12px;border-radius:10px;background:rgba(255,255,255,.2);color:inherit;font-weight:700;font-size:13px}
+.mbar button.dan{background:var(--warn);color:#fff}
+.mck{width:22px;height:22px;border-radius:50%;border:2px solid var(--sub);flex:none;display:inline-flex;align-items:center;justify-content:center}
+.mck.on{background:var(--acc);border-color:var(--acc)}
+.mck.on::after{content:'';width:9px;height:5px;border-left:2px solid #fff;border-bottom:2px solid #fff;transform:rotate(-45deg) translate(1px,-1px)}
+.trow.msel{outline:2px solid var(--acc);outline-offset:-2px}
+.trow{-webkit-touch-callout:none}
 </style>
 </head>
 <body>
 <div id="app"><div id="top"></div><div id="cal"></div></div>
 <div id="sheet"></div>
-<div id="fabs"><button class="fabb out" id="fab-out" data-a="fab" data-t="out" aria-label="지출 추가">＋<small>지출</small></button><button class="fabb in" id="fab-in" data-a="fab" data-t="in" aria-label="수입 추가">＋<small>수입</small></button></div>
+<div id="dock"><div class="seg" id="dockView"></div><button class="todayb" data-a="today" aria-label="오늘로 이동">오늘</button><span class="sp"></span><button class="fabb out" id="fab-out" data-a="fab" data-t="out" aria-label="지출 추가"><em>＋</em>지출</button><button class="fabb in" id="fab-in" data-a="fab" data-t="in" aria-label="수입 추가"><em>＋</em>수입</button></div>
 <input type="file" id="fileIn" accept=".json,application/json" class="hide">
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '2.1.0';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -327,7 +419,7 @@ function compact(n) {
 }
 
 /* ---------- 기본 데이터 ---------- */
-const DEFAULT_SETTINGS = { baseDay: 25, nameBy: 'end', showHoliday: true, heat: true, mode: 'out', cont: false, fixView: 'all', catsV: 2, hideSum: false, limitMode: 'net', limitManual: 0, showLimit: true };
+const DEFAULT_SETTINGS = { baseDay: 25, nameBy: 'end', showHoliday: true, heat: true, mode: 'out', cont: false, fixView: 'all', catsV: 2, hideSum: false, heroMin: false, limitMode: 'net', limitManual: 0, showLimit: true };
 const DEFAULT_CATS = [
   { id: 'food', name: '음식', icon: '🍚', type: 'out', subs: ['식당', '배달', '장보기', '간식'] },
   { id: 'cafe', name: '카페', icon: '☕', type: 'out', subs: [] },
@@ -707,7 +799,7 @@ function ensureSel() {
   if (!ST.sel || ST.sel < addDays(p.start, -6) || ST.sel > addDays(p.end, 6)) ST.sel = (t >= p.start && t <= p.end) ? t : p.start;
 }
 function selectDate(d, opts = {}) {
-  ST.sel = d; ST.picked = true;
+  ST.sel = d; ST.picked = true; ST.multi = null;
   if (ST.view === 'day') { const k = keyOf(d); ST.key = k; }
   else if (ST.view === 'month') {
     /* 내역도 일정도 없는 날: 내역창을 열지 않음 (이미 열려 있으면 닫음) */
@@ -733,6 +825,7 @@ function renderTop() {
   const p = periodOf(ST.key.y, ST.key.m), fv = S().fixView;
   const s = summarize(p.start, p.end, fv === 'all' ? {} : { kind: fv });
   const L = limitInfo(p), m = S().mode, hid = !!S().hideSum, M = v => hid ? '•••••' : fmt(v);
+  const bal = s.in - s.out, pct = s.in > 0 ? Math.round(s.out / s.in * 100) : null;
   $('#top').innerHTML = `
   <div class="top">
     <button class="nav" data-a="prev">‹</button>
@@ -744,15 +837,19 @@ function renderTop() {
     <button class="ib" data-a="tot" title="기간 합계">Σ</button>
     <button class="ib" data-a="set" title="설정">⚙</button>
   </div>
-  <div class="sum num"><span class="in">수입 <b>${M(s.in)}</b></span><span class="out">지출 <b>${M(s.out)}</b></span><span>잔액 <b>${M(s.in - s.out)}</b></span><span class="rng">${shortMD(p.start)} ~ ${shortMD(p.end)}</span></div>
-  ${L ? `<div class="lim num"><span>하루 기준 <b>${M(L.limit)}</b>${hid ? '' : '원'}${L.measure === 'var' && L.mode === 'net' ? ' <small>(수입−고정)</small>' : ''}</span><span class="${L.over.size ? 'warn' : ''}">초과 <b>${L.over.size}</b>일</span></div>` : ''}
+  <div class="hero ${S().heroMin ? 'min' : ''}" data-a="hero">
+    <div class="h1"><small>남은 돈${fv === 'all' ? '' : ' · ' + (fv === 'fix' ? '고정만' : '변동만')}</small><b class="big num">${hid ? '•••••' : fmt(bal)}<i>원</i></b></div>
+    <div class="pills num"><span class="pl"><u class="d in"></u>수입 <b>${M(s.in)}</b></span><span class="pl"><u class="d out"></u>지출 <b>${M(s.out)}</b></span></div>
+    ${pct === null ? '' : `<div class="meter ${pct >= 100 ? 'full' : ''}"><i style="width:${Math.min(100, pct)}%"></i></div>`}
+    <div class="hrow num"><span>${shortMD(p.start)} ~ ${shortMD(p.end)}${pct === null || hid ? '' : ` · 수입의 ${pct}% 사용`}</span>${L ? `<span>하루 기준 <b>${M(L.limit)}</b>${hid ? '' : '원'}</span><span class="${L.over.size ? 'warn' : ''}">초과 <b>${L.over.size}</b>일</span>` : ''}</div>
+  </div>
   <div class="bar">
-    <div class="seg">${[['month', '월'], ['week', '주'], ['day', '일']].map(([v, n]) => `<button data-a="view" data-v="${v}" class="${ST.view === v ? 'on' : ''}">${n}</button>`).join('')}</div>
-    <span class="sp"></span>
     <div class="seg">${[['out', '지출'], ['both', '수입·지출'], ['bal', '누적']].map(([v, n]) => `<button data-a="mode" data-v="${v}" class="${m === v ? 'on' : ''}">${n}</button>`).join('')}</div>
+    <span class="sp"></span>
     <button class="chip-btn ${fv !== 'all' ? 'on' : ''}" data-a="opts">보기${fv === 'all' ? '' : ' · ' + (fv === 'fix' ? '고정' : '변동')} ▾</button>
   </div>
   ${bannersHTML()}`;
+  $('#dockView').innerHTML = [['month', '월'], ['week', '주'], ['day', '일']].map(([v, n]) => `<button data-a="view" data-v="${v}" class="${ST.view === v ? 'on' : ''}">${n}</button>`).join('');
 }
 function bannersHTML() {
   let h = '';
@@ -790,7 +887,7 @@ function iconsRow(list) {
   list.forEach(t => { const c = catById(t.cat); if (!seen.find(x => x.icon === c.icon)) seen.push(c); });
   return `<div class="ics">${seen.slice(0, 4).map(c => icoHTML(c, '13px')).join('')}${seen.length > 4 ? '<i>+</i>' : ''}</div>`;
 }
-function bigWeekHTML(ws, p, txm, evm, cum, mode, today) {
+function bigWeekHTML(ws, p, txm, evm, cum, mode, today, wn) {
   let rows = ''; const LIM = limitInfo(p);
   for (let i = 0; i < 7; i++) {
     const d = addDays(ws, i), inP = d >= p.start && d <= p.end, list = txm.get(d) || [], tot = dayTotals(list), evs = evm.get(d) || [];
@@ -809,7 +906,7 @@ function bigWeekHTML(ws, p, txm, evm, cum, mode, today) {
     if (d === ST.sel) tt += `<button class="add-ev" data-a="evadd">+ 일정</button>`;
     rows += `<div class="${cls}" data-a="cell" data-d="${d}"><div class="wd"><b>${dd === 1 ? dm + '/' + dd : dd}</b><small>${DOW_KO[i]}</small></div><div class="wm">${chips}${items || (chips ? '' : '<span class="none">내역 없음</span>')}</div><div class="wt">${tt}</div></div>`;
   }
-  return `<div class="wk bigw">${rows}</div>`;
+  return `<div class="wk bigw"><div class="wkh"><b>${wn}주차</b><span>${shortMD(ws)} ~ ${shortMD(addDays(ws, 6))}</span></div>${rows}</div>`;
 }
 function renderGrid() {
   const p = periodOf(ST.key.y, ST.key.m);
@@ -825,7 +922,7 @@ function renderGrid() {
   let html = isWeek ? '' : `<div class="grid-h">${DOW_KO.map(n => `<div>${n}</div>`).join('')}<div>주합</div></div>`;
   for (let w = 0; w < weeks; w++) {
     const ws = addDays(gs, w * 7), big = isWeek && w === selIdx, compactRow = isWeek && w !== selIdx;
-    if (big) { html += bigWeekHTML(ws, p, txm, evm, cum, mode, today); continue; }
+    if (big) { html += bigWeekHTML(ws, p, txm, evm, cum, mode, today, w + 1); continue; }
     let cells = '', wo = 0, wi = 0;
     for (let i = 0; i < 7; i++) {
       const d = addDays(ws, i), inP = d >= p.start && d <= p.end, list = txm.get(d), tot = dayTotals(list), evs = evm.get(d) || [];
@@ -845,7 +942,7 @@ function renderGrid() {
     const wsum = mode === 'out' ? (wo ? `<span class="out num">-${compact(wo)}</span>` : '')
       : mode === 'both' ? (wo ? `<span class="out num">-${compact(wo)}</span>` : '') + (wi ? `<span class="in num">+${compact(wi)}</span>` : '')
         : (wo || wi ? `<span class="num ${net < 0 ? 'out' : 'in'}">${net < 0 ? '-' : ''}${compact(net)}</span>` : '');
-    html += `<div class="wk ${compactRow ? 'compact' : ''}">${cells}<div class="ws">${wsum}</div></div>`;
+    html += `<div class="wk ${compactRow ? 'compact' : ''}">${cells}<div class="ws"><em class="wn">${w + 1}주</em>${wsum}</div></div>`;
   }
   $('#cal').innerHTML = html;
 }
@@ -864,6 +961,7 @@ function dayBodyHTML(d) {
   const list = (txByDate(d, d).get(d) || []);
   const LIM = limitInfo(periodOf(keyOf(d).y, keyOf(d).m));
   let h = '';
+  if (ST.multi) h += `<div class="mbar"><b>${ST.multi.size}개 선택</b><span class="sp"></span><button data-a="mall">전체</button><button class="dan" data-a="mdel">삭제</button><button data-a="mcancel">취소</button></div>`;
   if (LIM && LIM.over.has(d)) h += `<div class="overrow">하루 기준 ${fmt(LIM.limit)}원을 <b>${fmt(LIM.per[d] - LIM.limit)}원</b> 초과했어요</div>`;
   h += evs.map((e, i) => {
     const c = evType(e.type).color;
@@ -876,7 +974,8 @@ function dayBodyHTML(d) {
     const lab = loan ? (t.type === 'in' ? '회수' : '대여') : c.name;
     const cls = loan ? 'loan' : t.type === 'out' ? 'out' : 'in';
     const ov = LIM && t.type === 'out' && !loan && (LIM.measure === 'all' || t.kind !== 'fix') && t.amount > LIM.limit;
-    return `<div class="trow${ov ? ' ov' : ''}" data-a="tedit" data-id="${t.id}"><div class="ic">${icoHTML(c, '34px')}</div><div class="m"><b>${esc(t.name || lab)}</b><small>${lab}${t.sub ? ' · ' + esc(t.sub) : ''}${t.kind === 'fix' ? '<span class="tag fix">고정</span>' : ''}${loan ? '<span class="tag">합계 제외</span>' : ''}</small></div><div class="a num ${cls}">${t.type === 'out' ? '-' : '+'}${fmt(t.amount)}</div></div>`;
+    const ms = ST.multi && ST.multi.has(t.id);
+    return `<div class="trow${ov ? ' ov' : ''}${ms ? ' msel' : ''}" data-a="tedit" data-id="${t.id}">${ST.multi ? `<span class="mck ${ms ? 'on' : ''}"></span>` : ''}<div class="ic">${icoHTML(c, '34px')}</div><div class="m"><b>${esc(t.name || lab)}</b><small>${lab}${t.sub ? ' · ' + esc(t.sub) : ''}${t.kind === 'fix' ? '<span class="tag fix">고정</span>' : ''}${loan ? '<span class="tag">합계 제외</span>' : ''}</small></div><div class="a num ${cls}">${t.type === 'out' ? '-' : '+'}${fmt(t.amount)}</div></div>`;
   }).join('');
   return h;
 }
@@ -972,6 +1071,8 @@ Object.assign(ACT, {
   mode(t) { S().mode = t.dataset.v; persist(); renderAll(); },
   heat() { S().heat = !S().heat; persist(); renderAll(); },
   opts() { openOpts(); },
+  hero() { S().heroMin = !S().heroMin; persist(); renderTop(); },
+  today() { const t = todayStr(); ST.key = keyOf(t); selectDate(t); },
   hide() { S().hideSum = !S().hideSum; persist(); renderAll(); toast(S().hideSum ? '금액을 숨겼어요' : '금액을 보여줘요', 1000); },
   lock() { if (pinOn()) lockNow(); else { toast('먼저 PIN을 만들어요'); pinSetup(); } },
   cell(t) { selectDate(t.dataset.d); },
@@ -1048,7 +1149,7 @@ function openInput(opts = {}) {
     <div class="btns"><button class="btn dan ${edit ? '' : 'hide'}" id="iDel">삭제</button>
       <label class="chk ${edit ? 'hide' : ''}"><input type="checkbox" id="iCont" ${S().cont ? 'checked' : ''}> 연속 입력</label><span class="sp"></span><button class="btn pri" id="iSave">저장</button></div>
   </div>
-  <div class="iconbar" id="iBar"></div>`);
+  <div class="iconwrap"><div class="iconbar" id="iBar"></div><div class="addwrap" id="iAdd"></div></div>`);
   const q = s => $(s, m);
   q('#iAmount').value = edit ? fmt(edit.amount) : '';
   q('#iName').value = st.name; q('#iDate').value = st.date;
@@ -1074,7 +1175,8 @@ function openInput(opts = {}) {
     $$('#iBar .icb', m).forEach(b => b.classList.toggle('on', b.dataset.c === st.cat));
   }
   function paintBar() {
-    q('#iBar').innerHTML = usageOrder(st.type).map(c => `<button class="icb" data-c="${c.id}">${icoHTML(c, '38px')}<span class="n">${esc(catLabel(c, st.type))}</span></button>`).join('') + `<button class="icb add" data-newcat="1" aria-label="분류 추가"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">추가</span></button>`;
+    q('#iBar').innerHTML = usageOrder(st.type).map(c => `<button class="icb" data-c="${c.id}">${icoHTML(c, '38px')}<span class="n">${esc(catLabel(c, st.type))}</span></button>`).join('');
+    q('#iAdd').innerHTML = `<button class="icb add" data-newcat="1" aria-label="항목 추가·수정"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">추가·수정</span></button>`;
   }
   function setCat(id, auto) {
     st.cat = id; if (!auto) st.manual = true;
@@ -1118,7 +1220,7 @@ function openInput(opts = {}) {
     if (!st.manual) { const sg = suggestCat(st.name, st.type); if (sg) setCat(sg, true); }
   };
 
-  q('#iBar').addEventListener('click', e => {
+  q('#iAdd').addEventListener('click', e => {
     if (!e.target.closest('.icb.add')) return;
     openCatPicker(st.type, (c, isNew) => {
       if (st.cat && !db.cats.some(x => x.id === st.cat)) { st.cat = null; st.sub = ''; }
@@ -1254,13 +1356,13 @@ function openEvent(opts = {}) {
       <div class="hint" id="eLhint"></div></div>
     <div class="btns"><button class="btn dan ${ev ? '' : 'hide'}" id="eDel">삭제</button><span class="sp"></span><button class="btn pri" id="eSave">저장</button></div>
   </div>
-  <div class="iconbar" id="eBar"></div>`);
+  <div class="iconwrap"><div class="iconbar" id="eBar"></div><div class="addwrap" id="eAdd"></div></div>`);
   const q = s => $(s, m);
   q('#eTitle').value = st.title; q('#eDate').value = st.date || base; q('#eEnd').value = st.end || '';
   q('#eLm').value = st.lm; q('#eLd').value = st.ld; q('#eLeap').checked = !!st.leap; q('#eLy').value = st.ly;
   function paint() {
-    q('#eBar').innerHTML = evTypeList().map(t => `<button class="icb ${st.type === t.id ? 'on' : ''}" data-t="${t.id}" style="--c:${t.color}">${evIco(t, '38px')}<span class="n">${esc(t.name)}</span></button>`).join('')
-      + `<button class="icb add" data-newtype="1" aria-label="종류 추가"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">추가</span></button>`;
+    q('#eBar').innerHTML = evTypeList().map(t => `<button class="icb ${st.type === t.id ? 'on' : ''}" data-t="${t.id}" style="--c:${t.color}">${evIco(t, '38px')}<span class="n">${esc(t.name)}</span></button>`).join('');
+    q('#eAdd').innerHTML = `<button class="icb add" data-newtype="1" aria-label="종류 추가"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">추가</span></button>`;
     $$('#eCal button', m).forEach(b => b.classList.toggle('on', b.dataset.c === st.cal));
     const reps = [['none', '안 함'], ['yearly', '매년']].concat(st.cal === 'solar' ? [['monthly', '매월']] : []);
     if (!reps.find(r => r[0] === st.repeat)) st.repeat = 'none';
@@ -1335,7 +1437,13 @@ function openEvent(opts = {}) {
 
 Object.assign(ACT, {
   fab(t) { openInput({ type: t && t.dataset.t === 'in' ? 'in' : 'out' }); },
-  tedit(t) { const tx = db.tx.find(x => x.id === t.dataset.id); if (tx) openInput({ tx }); },
+  tedit(t) {
+    if (ST.multi) {
+      const id = t.dataset.id; if (ST.multi.has(id)) ST.multi.delete(id); else ST.multi.add(id);
+      keepScroll(renderAll); return;
+    }
+    const tx = db.tx.find(x => x.id === t.dataset.id); if (tx) openInput({ tx });
+  },
   evadd() { openEvent({ date: ST.sel }); },
   evedit(t) { const ev = db.events.find(x => x.id === t.dataset.id); if (ev) openEvent({ ev }); },
 });
@@ -1370,6 +1478,49 @@ function openEvType(done) {
     db.evTypes.push(t); persist(); closeModal(m); done(t.id);
   };
 }
+
+/* ---------- 내역 길게 눌러 다중 선택 → 선택 삭제 ---------- */
+function keepScroll(fn) {
+  const sc = $$('.sh-b, .dayv .card').map(e => [e.className, e.scrollTop]);
+  fn();
+  sc.forEach(([c, t]) => { const e = $('.' + c.split(' ').join('.')); if (e) e.scrollTop = t; });
+}
+function multiEnter(id) {
+  ST.multi = new Set([id]); if (navigator.vibrate) try { navigator.vibrate(30); } catch (e) { }
+  keepScroll(renderAll);
+}
+function multiExit() { ST.multi = null; keepScroll(renderAll); }
+function multiDelete() {
+  const ids = [...(ST.multi || [])]; if (!ids.length) { toast('삭제할 내역을 선택해 주세요'); return; }
+  const txs = db.tx.filter(t => ids.includes(t.id));
+  const evs = txs.map(t => db.events.find(e => e.id === t.evId)).filter(Boolean);
+  const run = withEv => {
+    db.tx = db.tx.filter(t => !ids.includes(t.id));
+    evs.forEach(ev => { if (withEv) db.events = db.events.filter(x => x.id !== ev.id); else delete ev.txId; });
+    persist(); ST.multi = null; renderAll(); toast(`${ids.length}건을 삭제했어요`, 1400);
+  };
+  if (evs.length) askLink(`선택한 내역 ${ids.length}건 중 ${evs.length}건에 연결된 일정이 있어요. 일정도 같이 지울까요?`, [{ k: 'both', label: '일정도 같이 삭제', cls: 'dan' }, { k: 'solo', label: '내역만 삭제' }], k => run(k === 'both'));
+  else askLink(`선택한 내역 ${ids.length}건을 삭제할까요? 되돌릴 수 없어요.`, [{ k: 'y', label: `${ids.length}건 삭제`, cls: 'dan' }], () => run(false));
+}
+Object.assign(ACT, {
+  mall() { const d = ST.sel; ST.multi = new Set(db.tx.filter(t => t.date === d && (S().fixView === 'all' || (S().fixView === 'fix' ? t.kind === 'fix' : t.kind !== 'fix'))).map(t => t.id)); keepScroll(renderAll); },
+  mdel() { multiDelete(); },
+  mcancel() { multiExit(); }
+});
+(function () {
+  let timer = null, sx = 0, sy = 0;
+  const stop = () => { clearTimeout(timer); timer = null; };
+  document.addEventListener('pointerdown', e => {
+    ST.lpFired = false;
+    const row = e.target.closest('.trow[data-id]'); if (!row || ST.multi || document.body.classList.contains('has-modal')) return;
+    sx = e.clientX; sy = e.clientY;
+    timer = setTimeout(() => { timer = null; ST.lpFired = true; multiEnter(row.dataset.id); }, 500);
+  });
+  document.addEventListener('pointermove', e => { if (timer && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) stop(); });
+  ['pointerup', 'pointercancel'].forEach(t => document.addEventListener(t, stop));
+  document.addEventListener('contextmenu', e => { if (e.target.closest('.trow')) e.preventDefault(); });
+  document.addEventListener('click', e => { if (ST.lpFired) { ST.lpFired = false; e.stopPropagation(); e.preventDefault(); } }, true);
+})();
 /* ===== 달력 가계부 · 기간 합계, 설정, 분류 관리, 백업 ===== */
 
 /* ---------- 기간 합계 ---------- */
