@@ -539,6 +539,8 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 .lki.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,var(--card))}
 
 .toast{z-index:9999}
+
+.cntrow{display:flex;align-items:center;gap:8px;margin:8px 2px;font-size:14px;font-weight:700}
 </style>
 </head>
 <body>
@@ -549,7 +551,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.8.1';
+const APP_VERSION = '2.9.0';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -750,6 +752,7 @@ function icoHTML(c, size) {
 }
 const catById = id => db.cats.find(c => c.id === id) || { id, name: '미분류', icon: '❓', type: 'both', subs: [] };
 const isLoan = t => !!catById(t.cat).loan;
+const uncounted = t => isLoan(t) && !t.cnt; /* 대여·회수는 기본적으로 합계 제외, 체크하면 지출·수입에 반영 */
 function catsFor(type) { return db.cats.filter(c => c.type === type || c.type === 'both'); }
 function catLabel(c, type) { return c.loan ? (type === 'in' ? '회수' : '대여') : c.name; }
 const CAT_GROUPS = [['food','cafe','shop','cloth','house','trans','tel'], ['med','cult','trip','event','family'], ['ins','bank','loan','etc']];
@@ -1036,7 +1039,7 @@ function txByDate(from, to, raw) {
 function dayTotals(list) {
   const r = { out: 0, in: 0, loan: 0, n: list ? list.length : 0 };
   (list || []).forEach(t => {
-    if (isLoan(t)) r.loan++;
+    if (uncounted(t)) r.loan++;
     else if (t.type === 'out') r.out += t.amount; else r.in += t.amount;
   });
   return r;
@@ -1045,7 +1048,7 @@ function summarize(from, to, f = {}) {
   const r = { out: 0, in: 0, byCat: [], n: 0, days: 0, maxDay: null, fixOut: 0 };
   const cat = {}, day = {};
   db.tx.concat(plannedTx(from, to)).forEach(t => {
-    if (t.date < from || t.date > to || isLoan(t)) return;
+    if (t.date < from || t.date > to || uncounted(t)) return;
     if (f.cat && t.cat !== f.cat) return;
     if (f.kind && !(f.kind === 'fix' ? t.kind === 'fix' : t.kind !== 'fix')) return;
     if (f.kw && !(`${t.name || ''} ${t.sub || ''} ${catById(t.cat).name}`).toLowerCase().includes(f.kw.toLowerCase())) return;
@@ -1076,7 +1079,7 @@ function limitInfo(p) {
   if (!(limit > 0)) return null;
   const per = {};
   db.tx.concat(plannedTx(p.start, p.end)).forEach(t => {
-    if (t.date >= p.start && t.date <= p.end && t.type === 'out' && !isLoan(t) && (measure === 'all' || t.kind !== 'fix')) per[t.date] = (per[t.date] || 0) + t.amount;
+    if (t.date >= p.start && t.date <= p.end && t.type === 'out' && !uncounted(t) && (measure === 'all' || t.kind !== 'fix')) per[t.date] = (per[t.date] || 0) + t.amount;
   });
   const over = new Set(Object.keys(per).filter(d => per[d] > limit));
   return { limit, measure, days, start: p.start, end: p.end, per, over, mode };
@@ -1151,7 +1154,7 @@ function renderTop() {
   const p = periodOf(ST.key.y, ST.key.m), fv = S().fixView;
   const s = summarize(p.start, p.end, fv === 'all' ? {} : { kind: fv });
   const L = limitInfo(p), m = S().mode, hid = !!S().hideSum, M = v => hid ? '•••••' : fmt(v);
-  const pl = plannedTx(p.start, p.end).filter(t => !isLoan(t) && (fv === 'all' || (fv === 'fix' ? t.kind === 'fix' : t.kind !== 'fix'))), plOut = pl.filter(t => t.type === 'out').reduce((a, t) => a + t.amount, 0);
+  const pl = plannedTx(p.start, p.end).filter(t => !uncounted(t) && (fv === 'all' || (fv === 'fix' ? t.kind === 'fix' : t.kind !== 'fix'))), plOut = pl.filter(t => t.type === 'out').reduce((a, t) => a + t.amount, 0);
   const bal = s.in - s.out, pct = s.in > 0 ? Math.round(s.out / s.in * 100) : null;
   $('#top').innerHTML = `
   <div class="top">
@@ -1228,8 +1231,8 @@ function bigWeekHTML(ws, p, txm, evm, cum, mode, today, wn) {
     const [, dm, dd] = parse(d);
     const chips = evs.filter(e => !isMerged(e, list)).map(e => `<span class="evc" style="background:${evType(e.type).color}">${esc(e.title)}</span>`).join('');
     const items = list.map(t => {
-      const c = catById(t.cat), loan = isLoan(t), k = loan ? 'loan' : t.type === 'out' ? 'out' : 'in';
-      const ov = LIM && t.type === 'out' && !loan && (LIM.measure === 'all' || t.kind !== 'fix') && t.amount > LIM.limit;
+      const c = catById(t.cat), loan = isLoan(t), uc = uncounted(t), k = uc ? 'loan' : t.type === 'out' ? 'out' : 'in';
+      const ov = LIM && t.type === 'out' && !uc && (LIM.measure === 'all' || t.kind !== 'fix') && t.amount > LIM.limit;
       return `<div class="it2${ov ? ' ov' : ''}${t.planned ? ' plan' : ''}" data-a="tedit" data-id="${t.id}"><span class="ic">${icoHTML(c, '20px')}</span><span class="nm">${esc(t.name || (loan ? (t.type === 'in' ? '회수' : '대여') : c.name))}${comboEv(t, d) ? ' ' + evTag(comboEv(t, d)) : ''}</span><small>${esc(t.sub || (loan ? '' : c.name))}</small><b class="num ${k}">${t.type === 'out' ? '-' : '+'}${fmt(t.amount)}</b></div>`;
     }).join('');
     let tt = '';
@@ -1302,12 +1305,12 @@ function dayBodyHTML(d) {
   }).join('');
   if (!list.length) h += `<div class="empty">내역이 없어요. 아래 ＋ 버튼으로 추가해 보세요.</div>`;
   h += list.map(t => {
-    const c = catById(t.cat), loan = isLoan(t);
+    const c = catById(t.cat), loan = isLoan(t), uc = uncounted(t);
     const lab = loan ? (t.type === 'in' ? '회수' : '대여') : c.name;
-    const cls = loan ? 'loan' : t.type === 'out' ? 'out' : 'in';
-    const ov = LIM && t.type === 'out' && !loan && (LIM.measure === 'all' || t.kind !== 'fix') && t.amount > LIM.limit;
+    const cls = uc ? 'loan' : t.type === 'out' ? 'out' : 'in';
+    const ov = LIM && t.type === 'out' && !uc && (LIM.measure === 'all' || t.kind !== 'fix') && t.amount > LIM.limit;
     const ms = ST.multi && ST.multi.has(t.id);
-    return `<div class="trow${ov ? ' ov' : ''}${ms ? ' msel' : ''}${t.planned ? ' plan' : ''}" data-a="tedit" data-id="${t.id}">${ST.multi ? `<span class="mck ${ms ? 'on' : ''}"></span>` : ''}<div class="ic">${icoHTML(c, '34px')}</div><div class="m"><b>${esc(t.name || lab)}</b><small>${lab}${t.sub ? ' · ' + esc(t.sub) : ''}${t.planned ? '<span class="tag plan">예정</span>' : ''}${t.kind === 'fix' ? '<span class="tag fix">고정</span>' : ''}${loan ? '<span class="tag">합계 제외</span>' : ''}</small>${comboEv(t, d) ? `<div class="evline">${evTag(comboEv(t, d))}</div>` : (t.evId && db.events.find(x => x.id === t.evId) ? `<div class="evline"><span class="evt off">${linkIc}${esc(db.events.find(x => x.id === t.evId).title)} · ${shortMD(db.events.find(x => x.id === t.evId).date)}</span></div>` : '')}</div><div class="a num ${cls}">${t.type === 'out' ? '-' : '+'}${fmt(t.amount)}</div></div>`;
+    return `<div class="trow${ov ? ' ov' : ''}${ms ? ' msel' : ''}${t.planned ? ' plan' : ''}" data-a="tedit" data-id="${t.id}">${ST.multi ? `<span class="mck ${ms ? 'on' : ''}"></span>` : ''}<div class="ic">${icoHTML(c, '34px')}</div><div class="m"><b>${esc(t.name || lab)}</b><small>${lab}${t.sub ? ' · ' + esc(t.sub) : ''}${t.planned ? '<span class="tag plan">예정</span>' : ''}${t.kind === 'fix' ? '<span class="tag fix">고정</span>' : ''}${uc ? '<span class="tag">합계 제외</span>' : loan ? `<span class="tag">${t.type === 'in' ? '수입' : '지출'}에 반영</span>` : ''}</small>${comboEv(t, d) ? `<div class="evline">${evTag(comboEv(t, d))}</div>` : (t.evId && db.events.find(x => x.id === t.evId) ? `<div class="evline"><span class="evt off">${linkIc}${esc(db.events.find(x => x.id === t.evId).title)} · ${shortMD(db.events.find(x => x.id === t.evId).date)}</span></div>` : '')}</div><div class="a num ${cls}">${t.type === 'out' ? '-' : '+'}${fmt(t.amount)}</div></div>`;
   }).join('');
   return h;
 }
@@ -1466,8 +1469,8 @@ function openInput(opts = {}) {
   const occEv = linkedEv && linkedEv.txId !== edit.id ? linkedEv : null; if (occEv) linkedEv = null;
   const isComb = () => !!(edit && linkedEv && linkedEv.cal === 'solar');
   const st = edit
-    ? { type: edit.type, date: edit.date, name: edit.name || '', cat: edit.cat, sub: edit.sub || '', kind: edit.kind || 'var', manual: true, lk: edit.lk || '' }
-    : { lk: opts.lk || '', type: opts.type || 'out', date: opts.date || defaultInputDate(), name: opts.name || '', cat: opts.cat || null, sub: '', kind: 'var', manual: !!opts.cat };
+    ? { type: edit.type, date: edit.date, name: edit.name || '', cat: edit.cat, sub: edit.sub || '', kind: edit.kind || 'var', manual: true, lk: edit.lk || '', cnt: !!edit.cnt }
+    : { lk: opts.lk || '', cnt: false, type: opts.type || 'out', date: opts.date || defaultInputDate(), name: opts.name || '', cat: opts.cat || null, sub: '', kind: 'var', manual: !!opts.cat };
   st.mode = edit ? (isComb() ? 'both' : 'tx') : (opts.mode || 'tx');
   st.evType = linkedEv ? linkedEv.type : 'etc'; st.evSame = linkedEv ? linkedEv.date === edit.date : true;
   const m = openModal(`
@@ -1483,6 +1486,7 @@ function openInput(opts = {}) {
     ${linkedEv && linkedEv.cal !== 'solar' ? `<div class="linknote">${linkIc} 연결된 일정 · ${esc(linkedEv.title)}</div>` : ''}
     <div class="row hide" id="iDueRow"><label style="min-width:62px">회수 예정</label><input type="date" class="fld" id="iDue"><button class="mini" type="button" data-due="clr" aria-label="회수 예정일 지우기">✕</button></div>
     <div class="lkbox hide" id="iLk"></div>
+    <label class="chk cntrow hide" id="iCntRow"><input type="checkbox" id="iCnt"><span id="iCntT"></span></label>
     <div class="drop" id="iDrop"></div><div class="subs" id="iSubs"></div>
     <div class="iconwrap catwrap"><div class="iconbar" id="iBar"></div></div></div>
     <button class="chip hide" id="iAddEv" data-part="addev" style="margin:8px 0 0">＋ 일정도 같이 기록</button>
@@ -1526,6 +1530,7 @@ function openInput(opts = {}) {
     q('#iDueRow').classList.toggle('hide', !(c && c.loan && st.type === 'out'));
     $$('#iBar .icb', m).forEach(b => b.classList.toggle('on', b.dataset.c === st.cat));
     paintLk();
+    { const on = !!(c && c.loan); q('#iCntRow').classList.toggle('hide', !on); if (on) { q('#iCntT').textContent = st.type === 'out' ? '지출에 반영 (합계에 포함)' : '수입에 반영 (합계에 포함)'; q('#iCnt').checked = !!st.cnt; } }
   }
   function paintLk() {
     const c = st.cat && catById(st.cat), box = q('#iLk'), on = !!(c && c.loan && st.type === 'in');
@@ -1612,6 +1617,7 @@ function openInput(opts = {}) {
   function shift(n) { st.date = addDays(q('#iDate').value || st.date, n); q('#iDate').value = st.date; }
   q('#iDate').onchange = e => { if (e.target.value) st.date = e.target.value; };
   q('#iAmount').oninput = e => { const d = e.target.value.replace(/\D/g, '').slice(0, 11); e.target.value = d ? fmt(+d) : ''; };
+  q('#iCnt').onchange = e => { st.cnt = e.target.checked; };
   q('#iLk').addEventListener('click', e => {
     const b = e.target.closest('[data-lk]'); if (!b) return;
     if (st.lk === b.dataset.lk) st.lk = '';
@@ -1666,13 +1672,14 @@ function openInput(opts = {}) {
         db.events.push(ev); tx.evId = ev.id;
       }
       { const lend = catById(cat).loan && st.type === 'out', dv = lend ? q('#iDue').value : ''; if (dv) tx.due = dv; else delete tx.due; syncDueEv(tx); }
+      { if (catById(cat).loan && st.cnt) tx.cnt = true; else delete tx.cnt; }
       { const rcv = catById(cat).loan && st.type === 'in'; if (rcv && st.lk) tx.lk = st.lk; else delete tx.lk; }
       if (rec.name && !catById(cat).loan) learnRule(rec.name, cat);
       const cont = !edit && q('#iCont').checked;
       if (!edit) S().cont = cont;
       persist(); revealDate(rec.date); renderAll(); if (ST.view !== 'day') ensureVisible();
       if (cont) {
-        q('#iAmount').value = ''; q('#iName').value = ''; q('#iEvT').value = ''; st.name = ''; st.cat = null; st.sub = ''; st.manual = false;
+        q('#iAmount').value = ''; q('#iName').value = ''; q('#iEvT').value = ''; st.name = ''; st.cat = null; st.sub = ''; st.manual = false; st.cnt = false; st.lk = '';
         paintCat(); q('#iAmount').focus(); toast('저장했어요 · 계속 입력하세요', 1200);
       } else { closeModal(m); toast(edit ? '수정했어요' : (st.mode === 'both' ? '내역과 일정을 저장했어요' : '저장했어요'), 1200); }
     };
@@ -2060,7 +2067,7 @@ function openTotals() {
       }).join('');
     }
     const fx = {};
-    db.tx.concat(plannedTx(from, to)).forEach(t => { if (t.date >= from && t.date <= to && t.kind === 'fix' && t.type === 'out' && !isLoan(t) && (!tp.cat || t.cat === tp.cat) && (!tp.kw || (t.name || '').includes(tp.kw))) { const k = (t.name || catById(t.cat).name); (fx[k] = fx[k] || { n: 0, v: 0, cat: t.cat }); fx[k].n++; fx[k].v += t.amount; } });
+    db.tx.concat(plannedTx(from, to)).forEach(t => { if (t.date >= from && t.date <= to && t.kind === 'fix' && t.type === 'out' && !uncounted(t) && (!tp.cat || t.cat === tp.cat) && (!tp.kw || (t.name || '').includes(tp.kw))) { const k = (t.name || catById(t.cat).name); (fx[k] = fx[k] || { n: 0, v: 0, cat: t.cat }); fx[k].n++; fx[k].v += t.amount; } });
     const fxl = Object.entries(fx).sort((a, b) => b[1].v - a[1].v);
     if (fxl.length) h += `<div class="sec">고정 지출 내역</div>` + fxl.map(([k, x]) => `<div class="kv"><span>${icoHTML(catById(x.cat), '20px')} ${esc(k)} <small style="color:var(--sub)">${x.n}회</small></span><span class="num out">${fmt(x.v)}</span></div>`).join('');
     const lb = loanBalances();
