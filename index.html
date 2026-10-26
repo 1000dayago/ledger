@@ -259,6 +259,11 @@ select.fld{appearance:none}
 .lk-sheet{position:absolute;inset:0;background:rgba(10,16,24,.5);display:flex;align-items:flex-end}
 .lk-box{background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom))}
 .lk-box p{color:var(--sub);font-size:13px;margin:8px 0}
+
+/* ---- 분류 추가 버튼 (아이콘 줄 맨 끝) ---- */
+.icb.add .ico.plus{background:none;border:1.5px dashed var(--sub);color:var(--sub);--s:38px}
+.icb.add .ico.plus svg{width:50%;height:50%}
+.icb.add .n{color:var(--sub)}
 </style>
 </head>
 <body>
@@ -269,7 +274,7 @@ select.fld{appearance:none}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -302,7 +307,7 @@ function compact(n) {
 }
 
 /* ---------- 기본 데이터 ---------- */
-const DEFAULT_SETTINGS = { baseDay: 25, nameBy: 'end', showHoliday: true, heat: true, mode: 'out', cont: false, fixView: 'all', limitMode: 'net', limitManual: 0, showLimit: true };
+const DEFAULT_SETTINGS = { baseDay: 25, nameBy: 'end', showHoliday: true, heat: true, mode: 'out', cont: false, fixView: 'all', catsV: 2, limitMode: 'net', limitManual: 0, showLimit: true };
 const DEFAULT_CATS = [
   { id: 'food', name: '음식', icon: '🍚', type: 'out', subs: ['식당', '배달', '장보기', '간식'] },
   { id: 'cafe', name: '카페', icon: '☕', type: 'out', subs: [] },
@@ -316,6 +321,8 @@ const DEFAULT_CATS = [
   { id: 'trip', name: '여행', icon: '✈️', type: 'out', subs: ['교통', '숙박', '식비', '쇼핑'] },
   { id: 'event', name: '경조사', icon: '💐', type: 'out', subs: ['축의', '부의', '선물'] },
   { id: 'family', name: '부모님·가족', icon: '👪', type: 'out', subs: ['용돈', '생활비', '선물'] },
+  { id: 'ins', name: '보험', icon: '🛡️', type: 'both', subs: ['건강', '자동차', '실손'] },
+  { id: 'bank', name: '은행', icon: '🏦', type: 'both', subs: ['이자', '대출상환', '송금', '수수료'] },
   { id: 'loan', name: '대여/회수', icon: '🤝', type: 'both', loan: true, subs: [] },
   { id: 'etc', name: '기타', icon: '📦', type: 'out', subs: [] },
   { id: 'salary', name: '월급', icon: '💰', type: 'in', subs: [] },
@@ -349,7 +356,14 @@ function adopt(o) {
   if (!o || typeof o !== 'object') throw new Error('형식 오류');
   const d = freshDB();
   d.settings = { ...d.settings, ...(o.settings || {}) };
-  if (Array.isArray(o.cats) && o.cats.length) d.cats = o.cats;
+  if (Array.isArray(o.cats) && o.cats.length) {
+    d.cats = o.cats;
+    if (!((o.settings || {}).catsV >= 2)) {   /* 1.3.0: 보험·은행 분류 한 번만 추가 */
+      const at = Math.max(0, d.cats.findIndex(c => c.id === 'loan'));
+      DEFAULT_CATS.filter(c => c.id === 'ins' || c.id === 'bank').forEach((c, i) => { if (!d.cats.some(x => x.id === c.id || (x.name === c.name && x.type === c.type))) d.cats.splice(at + i, 0, { ...c, subs: [...c.subs] }); });
+    }
+  }
+  d.settings.catsV = 2;
   if (Array.isArray(o.tx)) d.tx = o.tx.filter(t => t && /^\d{4}-\d{2}-\d{2}$/.test(t.date) && isFinite(t.amount));
   if (Array.isArray(o.events)) d.events = o.events;
   if (o.rules && typeof o.rules === 'object') d.rules = o.rules;
@@ -386,6 +400,8 @@ const ICON_SVG = {
   '↩': ['#3f9a8f','M9 14L4 9l5-5 M4 9h10a6 6 0 0 1 0 12h-3'],
   '🎁': ['#d6568a','M4 11h16v9H4z M3 7h18v4H3z M12 7v13 M12 7c-3 0-4-4-1.5-4S12 7 12 7z M12 7c3 0 4-4 1.5-4S12 7 12 7z'],
   '➕': ['#2f9e6b','M12 5v14 M5 12h14'],
+  '🛡': ['#3b8f7a','M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z M9 12l2 2 4-4'],
+  '🏦': ['#4a6fa5','M3 10l9-6 9 6z M5 10v8 M9 10v8 M15 10v8 M19 10v8 M3 20h18'],
   '❓': ['#7d8794','M9 9a3 3 0 1 1 4 2.8c-.7.4-1 1-1 1.7 M12 17h.01']
 };
 function icoHTML(c, size) {
@@ -989,7 +1005,7 @@ function openInput(opts = {}) {
     $$('.icb', m).forEach(b => b.classList.toggle('on', b.dataset.c === st.cat));
   }
   function paintBar() {
-    q('#iBar').innerHTML = usageOrder(st.type).map(c => `<button class="icb" data-c="${c.id}">${icoHTML(c, '38px')}<span class="n">${esc(catLabel(c, st.type))}</span></button>`).join('');
+    q('#iBar').innerHTML = usageOrder(st.type).map(c => `<button class="icb" data-c="${c.id}">${icoHTML(c, '38px')}<span class="n">${esc(catLabel(c, st.type))}</span></button>`).join('') + `<button class="icb add" data-newcat="1" aria-label="분류 추가"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">추가</span></button>`;
   }
   function setCat(id, auto) {
     st.cat = id; if (!auto) st.manual = true;
@@ -1020,6 +1036,11 @@ function openInput(opts = {}) {
     st.name = e.target.value;
     if (!st.manual) { const sg = suggestCat(st.name, st.type); if (sg) setCat(sg, true); }
   };
+
+  q('#iBar').addEventListener('click', e => {
+    if (!e.target.closest('.icb.add')) return;
+    editCat(null, nc => { paintBar(); if (nc) { setCat(nc.id); const bt = $(`.icb[data-c="${nc.id}"]`, m); if (bt) bt.scrollIntoView({ inline: 'center', block: 'nearest' }); } }, st.type);
+  });
 
   /* 아이콘 줄: 탭=선택, 위로 끌기=드래그 등록, 길게 누르기=세부 항목 */
   bindIconBar(q('#iBar'), q('#iDrop'), setCat, () => st, id => { st.sub = ''; });
@@ -1052,7 +1073,7 @@ function openInput(opts = {}) {
 /* ---------- 아이콘 줄 제스처 ---------- */
 function bindIconBar(bar, drop, setCat, getSt) {
   bar.addEventListener('pointerdown', e => {
-    const b = e.target.closest('.icb'); if (!b) return;
+    const b = e.target.closest('.icb'); if (!b || b.classList.contains('add')) return;
     const id = b.dataset.c, sx = e.clientX, sy = e.clientY, icon = $('.ico', b).outerHTML;
     let dragging = false, long = false, ghost = null, moved = false, over = false;
     const timer = setTimeout(() => { if (!moved) { long = true; showSubPop(b, id, setCat, getSt); } }, 450);
@@ -1386,7 +1407,7 @@ function bindRestore() {
 }
 
 /* ---------- 분류 관리 ---------- */
-const ICON_PALETTE = ['🍚', '🍜', '🍔', '☕', '🍺', '🛒', '🛍️', '👕', '👟', '🚌', '🚗', '⛽', '🏠', '💡', '📱', '💊', '🏥', '🎬', '🎮', '📚', '🎓', '✈️', '🏨', '💐', '🎁', '👪', '👶', '🐶', '💄', '💇', '🏋️', '🧾', '💰', '💼', '↩️', '➕', '📦', '🔧', '🚬', '🎫'];
+const ICON_PALETTE = ['🏦', '🛡️', '🍚', '🍜', '🍔', '☕', '🍺', '🛒', '🛍️', '👕', '👟', '🚌', '🚗', '⛽', '🏠', '💡', '📱', '💊', '🏥', '🎬', '🎮', '📚', '🎓', '✈️', '🏨', '💐', '🎁', '👪', '👶', '🐶', '💄', '💇', '🏋️', '🧾', '💰', '💼', '↩️', '➕', '📦', '🔧', '🚬', '🎫'];
 function openCats() {
   const m = openModal('', 'full'); m.id = 'catPanel';
   const paint = () => {
@@ -1410,13 +1431,13 @@ function openCats() {
     }
   });
 }
-function editCat(cat, done) {
-  const st = cat ? { ...cat, subs: [...cat.subs] } : { name: '', icon: '📦', type: 'out', subs: [] };
+function editCat(cat, done, presetType) {
+  const st = cat ? { ...cat, subs: [...cat.subs] } : { name: '', icon: '📦', type: presetType || 'out', subs: [] };
   const m = openModal(`<div class="ph"><b>${cat ? '분류 수정' : '새 분류'}</b><span class="sp"></span><button class="x" data-e="x">✕</button></div>
   <div class="pb">
     <div class="row"><input class="fld" id="cIcon" style="flex:none;width:64px;text-align:center;font-size:22px" maxlength="4"><input class="fld" id="cName" placeholder="분류 이름" maxlength="10" ${cat && cat.loan ? 'disabled' : ''}></div>
     <div class="chips" style="gap:4px" id="cPal">${ICON_PALETTE.map(i => `<button class="chip" style="font-size:18px;padding:2px 6px" data-i="${i}">${i}</button>`).join('')}</div>
-    <div class="row ${cat ? 'hide' : ''}"><label>구분</label><div class="seg" id="cType"><button data-t="out">지출</button><button data-t="in">수입</button></div></div>
+    <div class="row ${cat || presetType ? 'hide' : ''}"><label>구분</label><div class="seg" id="cType"><button data-t="out">지출</button><button data-t="in">수입</button></div></div>
     <div class="row"><label>세부 항목</label><input class="fld" id="cSubs" placeholder="쉼표로 구분 (예: 식당, 배달, 장보기)"></div>
     <div class="btns"><button class="btn dan ${cat && !cat.loan ? '' : 'hide'}" id="cDel">삭제</button><span class="sp"></span><button class="btn pri" id="cSave">저장</button></div>
   </div>`);
@@ -1440,7 +1461,7 @@ function editCat(cat, done) {
       const lastSame = db.cats.map((c, i) => c.type === st.type ? i : -1).filter(i => i >= 0).pop();
       db.cats.splice((lastSame == null ? db.cats.length : lastSame) + 1, 0, nc);
     }
-    persist(); closeModal(m); done(); renderAll();
+    persist(); closeModal(m); done(cat || db.cats.find(c => c.name === name && c.type === st.type)); renderAll();
   };
   const del = q('#cDel'); let armed = 0;
   del.onclick = () => {
