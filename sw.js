@@ -1,5 +1,5 @@
 /* 달력 가계부 서비스 워커: 오프라인에서도 열리고, 새 버전은 다음 실행 때 반영돼요 */
-const CACHE = 'gagyebu-v1.0.0';
+const CACHE = 'gagyebu-v1.1.0';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));

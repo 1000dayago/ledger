@@ -207,13 +207,38 @@ select.fld{appearance:none}
 .crow .v{width:86px;text-align:right;flex:none}
 .sec{font-size:12px;color:var(--sub);margin:14px 0 4px;font-weight:700}
 .list-item{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--line)}
-.list-item .e{font-size:20px;width:28px;text-align:center}
+.list-item .e{font-size:20px;width:30px;text-align:center;display:flex;justify-content:center}
 .list-item .m{flex:1;min-width:0}.list-item small{color:var(--sub);display:block}
 .mini{width:28px;height:28px;border-radius:8px;background:var(--soft);color:var(--sub)}
 .sw{position:relative;width:42px;height:24px;border-radius:12px;background:var(--line);flex:none}
 .sw::after{content:'';position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:9px;background:#fff;transition:.15s}
 .sw.on{background:var(--acc)}.sw.on::after{left:21px}
 .toast{position:fixed;left:50%;bottom:calc(80px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#222c38;color:#fff;padding:8px 14px;border-radius:18px;font-size:13px;z-index:99;max-width:86vw;text-align:center}
+
+/* ---- 아이콘(라인) ---- */
+.ico{--c:#7d8794;--s:34px;width:var(--s);height:var(--s);border-radius:calc(var(--s)*.3);background:color-mix(in srgb,var(--c) 14%,var(--card));color:var(--c);display:inline-flex;align-items:center;justify-content:center;flex:none;vertical-align:middle}
+.ico svg{width:58%;height:58%;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.ico.em{font-size:calc(var(--s)*.55);line-height:1}
+.icb .ico{display:flex;margin:0 auto 2px}
+.icb.on .ico{box-shadow:0 0 0 2px var(--c)}
+.drop .ico{--s:30px}
+.trow .ic{background:none;width:auto;height:auto;border-radius:0}
+.it2 .ic{width:20px;display:inline-flex}
+.ics{display:flex;gap:2px;align-items:center;letter-spacing:0;font-size:10px;height:14px}
+.ics .ico{background:none;border-radius:0}
+.ics i{font-style:normal;color:var(--sub)}
+.ghost{font-size:0;filter:drop-shadow(0 4px 8px rgba(0,0,0,.3))}
+.ghost .ico{--s:52px;background:var(--card)}
+/* ---- 하루 기준 초과 ---- */
+.lim{display:flex;justify-content:space-between;padding:2px 12px 0;font-size:11px;color:var(--sub)}
+.lim b{color:var(--ink)}.lim .out b{color:var(--out)}
+.cell.over{box-shadow:inset 0 -3px 0 var(--out)}
+.cell.over .am.out{font-weight:800}
+.wr.over .wt .out{font-weight:800}.wr.over{box-shadow:inset 3px 0 0 var(--out)}
+.trow.ov,.it2.ov{background:color-mix(in srgb,var(--out) 10%,transparent);border-radius:8px}
+.trow.ov .a,.it2.ov b{font-weight:800}
+.overrow{background:color-mix(in srgb,var(--out) 12%,var(--card));color:var(--out);font-size:12px;padding:6px 10px;border-radius:8px;margin-bottom:6px}
+.list-item.sub{padding-left:14px}
 </style>
 </head>
 <body>
@@ -224,7 +249,7 @@ select.fld{appearance:none}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -257,7 +282,7 @@ function compact(n) {
 }
 
 /* ---------- 기본 데이터 ---------- */
-const DEFAULT_SETTINGS = { baseDay: 25, nameBy: 'end', showHoliday: true, heat: true, mode: 'out', cont: false };
+const DEFAULT_SETTINGS = { baseDay: 25, nameBy: 'end', showHoliday: true, heat: true, mode: 'out', cont: false, fixView: 'all', limitMode: 'net', limitManual: 0, showLimit: true };
 const DEFAULT_CATS = [
   { id: 'food', name: '음식', icon: '🍚', type: 'out', subs: ['식당', '배달', '장보기', '간식'] },
   { id: 'cafe', name: '카페', icon: '☕', type: 'out', subs: [] },
@@ -321,6 +346,33 @@ function saveDB() {
 const newId = p => p + (db.nextId++);
 
 /* ---------- 분류 ---------- */
+const ICON_SVG = {
+  '🍚': ['#e0743c','M4 11h16a8 8 0 0 1-16 0z M9 7c0-1.4 1-1.8 1-3 M14 7c0-1.4 1-1.8 1-3'],
+  '☕': ['#8d6a4f','M5 9h11v5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5z M16 10h2a2 2 0 0 1 0 4h-2 M8 3v3 M12 3v3'],
+  '🛍': ['#d6568a','M5 8h14l-1 12H6z M9 8V7a3 3 0 0 1 6 0v1'],
+  '👕': ['#5b7bd5','M8 4l-5 3 2 4 3-1v10h8V10l3 1 2-4-5-3a4 4 0 0 1-8 0z'],
+  '🚌': ['#3f9a8f','M5 4h14a1 1 0 0 1 1 1v11H4V5a1 1 0 0 1 1-1z M4 11h16 M7 16v3 M17 16v3 M8 14h.01 M16 14h.01'],
+  '🏠': ['#a07c3b','M4 11l8-7 8 7 M6 10v10h12V10 M10 20v-5h4v5'],
+  '📱': ['#4a86c5','M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M11 18h2'],
+  '💊': ['#c4566b','M10.5 20.5a4.95 4.95 0 0 1-7-7l10-10a4.95 4.95 0 0 1 7 7z M8.5 8.5l7 7'],
+  '🎬': ['#8a5cc7','M3 6h18v12H3z M7 6v12 M17 6v12 M3 10h4 M3 14h4 M17 10h4 M17 14h4'],
+  '✈': ['#2c9ac4','M21 16v-2l-8-5V4a1.5 1.5 0 0 0-3 0v5l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z'],
+  '💐': ['#d0629a','M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0 M12 10c-1-3 0-6 0-6s1 3 0 6 M12 14c1 3 0 6 0 6s-1-3 0-6 M10 12c-3 1-6 0-6 0s3-1 6 0 M14 12c3-1 6 0 6 0s-3 1-6 0'],
+  '👪': ['#d9822b','M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M3 20a6 6 0 0 1 12 0 M17 11a2.5 2.5 0 1 0 0-5 M21 19a5 5 0 0 0-4-4.9'],
+  '🤝': ['#8a5cc7','M7 8h12l-3-3 M17 16H5l3 3'],
+  '📦': ['#7d8794','M3 8l9-5 9 5v8l-9 5-9-5z M3 8l9 5 9-5 M12 13v8'],
+  '💰': ['#2f9e6b','M3 7h15a3 3 0 0 1 3 3v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M3 7l12-3v3 M16 14h2'],
+  '💼': ['#4f6f8f','M4 8h16v11H4z M9 8V6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2 M4 13h16'],
+  '↩': ['#3f9a8f','M9 14L4 9l5-5 M4 9h10a6 6 0 0 1 0 12h-3'],
+  '🎁': ['#d6568a','M4 11h16v9H4z M3 7h18v4H3z M12 7v13 M12 7c-3 0-4-4-1.5-4S12 7 12 7z M12 7c3 0 4-4 1.5-4S12 7 12 7z'],
+  '➕': ['#2f9e6b','M12 5v14 M5 12h14'],
+  '❓': ['#7d8794','M9 9a3 3 0 1 1 4 2.8c-.7.4-1 1-1 1.7 M12 17h.01']
+};
+function icoHTML(c, size) {
+  const k = String(c.icon || '').replace(/\uFE0F/g, ''), d = ICON_SVG[k], st = size ? `--s:${size};` : '';
+  if (!d) return `<span class="ico em" style="${st}">${c.icon || ''}</span>`;
+  return `<span class="ico" style="--c:${d[0]};${st}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d[1]}"/></svg></span>`;
+}
 const catById = id => db.cats.find(c => c.id === id) || { id, name: '미분류', icon: '❓', type: 'both', subs: [] };
 const isLoan = t => !!catById(t.cat).loan;
 function catsFor(type) { return db.cats.filter(c => c.type === type || c.type === 'both'); }
@@ -484,9 +536,10 @@ function eventsByDate(from, to) {
 }
 
 /* ---------- 거래 집계 ---------- */
-function txByDate(from, to) {
+const fixMatch = t => { const f = S().fixView; return f === 'all' || (f === 'fix' ? t.kind === 'fix' : t.kind !== 'fix'); };
+function txByDate(from, to, raw) {
   const map = new Map();
-  db.tx.forEach(t => { if (t.date >= from && t.date <= to) { if (!map.has(t.date)) map.set(t.date, []); map.get(t.date).push(t); } });
+  db.tx.forEach(t => { if (t.date >= from && t.date <= to && (raw || fixMatch(t))) { if (!map.has(t.date)) map.set(t.date, []); map.get(t.date).push(t); } });
   map.forEach(a => a.sort((x, y) => (x.order || 0) - (y.order || 0)));
   return map;
 }
@@ -499,15 +552,17 @@ function dayTotals(list) {
   return r;
 }
 function summarize(from, to, f = {}) {
-  const r = { out: 0, in: 0, byCat: [], n: 0, days: 0, maxDay: null };
+  const r = { out: 0, in: 0, byCat: [], n: 0, days: 0, maxDay: null, fixOut: 0 };
   const cat = {}, day = {};
   db.tx.forEach(t => {
     if (t.date < from || t.date > to || isLoan(t)) return;
     if (f.cat && t.cat !== f.cat) return;
+    if (f.kind && !(f.kind === 'fix' ? t.kind === 'fix' : t.kind !== 'fix')) return;
     if (f.kw && !(`${t.name || ''} ${t.sub || ''} ${catById(t.cat).name}`).toLowerCase().includes(f.kw.toLowerCase())) return;
     r.n++;
     if (t.type === 'out') {
       r.out += t.amount;
+      if (t.kind === 'fix') r.fixOut += t.amount;
       const k = t.cat;
       cat[k] = cat[k] || { id: k, out: 0, n: 0, fix: 0 };
       cat[k].out += t.amount; cat[k].n++; if (t.kind === 'fix') cat[k].fix += t.amount;
@@ -518,9 +573,23 @@ function summarize(from, to, f = {}) {
   const t0 = todayStr(), end = to < t0 ? to : t0;
   r.days = Math.max(1, daysBetween(from, end < from ? from : end) + 1);
   Object.keys(day).forEach(d => { if (!r.maxDay || day[d] > r.maxDay.v) r.maxDay = { d, v: day[d] }; });
-  r.fixOut = db.tx.filter(t => t.date >= from && t.date <= to && !isLoan(t) && t.type === 'out' && t.kind === 'fix'
-    && (!f.cat || t.cat === f.cat)).reduce((a, t) => a + t.amount, 0);
   return r;
+}
+function limitInfo(p) {
+  const mode = S().limitMode;
+  if (mode === 'off' || S().showLimit === false) return null;
+  const days = daysBetween(p.start, p.end) + 1, s = summarize(p.start, p.end);
+  let limit = 0, measure = 'var';
+  if (mode === 'gross') { if (s.in <= 0) return null; limit = Math.floor(s.in / days); measure = 'all'; }
+  else if (mode === 'manual') limit = Math.floor(S().limitManual || 0);
+  else { if (s.in <= 0) return null; limit = Math.floor((s.in - s.fixOut) / days); }
+  if (!(limit > 0)) return null;
+  const per = {};
+  db.tx.forEach(t => {
+    if (t.date >= p.start && t.date <= p.end && t.type === 'out' && !isLoan(t) && (measure === 'all' || t.kind !== 'fix')) per[t.date] = (per[t.date] || 0) + t.amount;
+  });
+  const over = new Set(Object.keys(per).filter(d => per[d] > limit));
+  return { limit, measure, days, start: p.start, end: p.end, per, over, mode };
 }
 function loanBalances() {
   const m = {};
@@ -584,8 +653,9 @@ function ensureVisible() {
 
 /* ---------- 헤더 ---------- */
 function renderTop() {
-  const p = periodOf(ST.key.y, ST.key.m), s = summarize(p.start, p.end);
-  const m = S().mode;
+  const p = periodOf(ST.key.y, ST.key.m), fv = S().fixView;
+  const s = summarize(p.start, p.end, fv === 'all' ? {} : { kind: fv });
+  const L = limitInfo(p), m = S().mode;
   $('#top').innerHTML = `
   <div class="top">
     <button class="nav" data-a="prev">‹</button>
@@ -596,11 +666,12 @@ function renderTop() {
     <button class="ib" data-a="set" title="설정">⚙</button>
   </div>
   <div class="sum num"><span class="in">수입 <b>${fmt(s.in)}</b></span><span class="out">지출 <b>${fmt(s.out)}</b></span><span>잔액 <b>${fmt(s.in - s.out)}</b></span><span class="rng">${shortMD(p.start)} ~ ${shortMD(p.end)}</span></div>
+  ${L ? `<div class="lim num"><span>하루 기준 <b>${fmt(L.limit)}</b>원${L.measure === 'var' && L.mode === 'net' ? ' <small>(수입−고정)</small>' : ''}</span><span class="${L.over.size ? 'out' : ''}">초과 <b>${L.over.size}</b>일</span></div>` : ''}
   <div class="bar">
     <div class="seg">${[['month', '월'], ['week', '주'], ['day', '일']].map(([v, n]) => `<button data-a="view" data-v="${v}" class="${ST.view === v ? 'on' : ''}">${n}</button>`).join('')}</div>
     <span class="sp"></span>
     <div class="seg">${[['out', '지출'], ['both', '수입·지출'], ['bal', '누적']].map(([v, n]) => `<button data-a="mode" data-v="${v}" class="${m === v ? 'on' : ''}">${n}</button>`).join('')}</div>
-    <button class="chip-btn ${S().heat ? 'on' : ''}" data-a="heat" title="지출이 큰 날을 진하게">히트</button>
+    <button class="chip-btn ${fv !== 'all' ? 'on' : ''}" data-a="opts">보기${fv === 'all' ? '' : ' · ' + (fv === 'fix' ? '고정' : '변동')} ▾</button>
   </div>
   ${bannersHTML()}`;
 }
@@ -637,20 +708,21 @@ function amountHTML(tot, mode, cum, showCum) {
 }
 function iconsRow(list) {
   const seen = [];
-  list.forEach(t => { const i = catById(t.cat).icon; if (!seen.includes(i)) seen.push(i); });
-  return `<div class="ics">${seen.slice(0, 4).join('')}${seen.length > 4 ? '+' : ''}</div>`;
+  list.forEach(t => { const c = catById(t.cat); if (!seen.find(x => x.icon === c.icon)) seen.push(c); });
+  return `<div class="ics">${seen.slice(0, 4).map(c => icoHTML(c, '13px')).join('')}${seen.length > 4 ? '<i>+</i>' : ''}</div>`;
 }
 function bigWeekHTML(ws, p, txm, evm, cum, mode, today) {
-  let rows = '';
+  let rows = ''; const LIM = limitInfo(p);
   for (let i = 0; i < 7; i++) {
     const d = addDays(ws, i), inP = d >= p.start && d <= p.end, list = txm.get(d) || [], tot = dayTotals(list), evs = evm.get(d) || [];
     const isHol = evs.some(e => e.type === 'holiday');
-    const cls = ['wr', !inP && 'dim', d === ST.sel && 'sel', d === today && 'today', i === 0 && 'sun', i === 6 && 'sat', isHol && 'hol'].filter(Boolean).join(' ');
+    const cls = ['wr', !inP && 'dim', d === ST.sel && 'sel', d === today && 'today', LIM && LIM.over.has(d) && 'over', i === 0 && 'sun', i === 6 && 'sat', isHol && 'hol'].filter(Boolean).join(' ');
     const [, dm, dd] = parse(d);
     const chips = evs.map(e => `<span class="evc" style="background:${EVENT_TYPES[e.type].color}">${esc(e.title)}</span>`).join('');
     const items = list.map(t => {
       const c = catById(t.cat), loan = isLoan(t), k = loan ? 'loan' : t.type === 'out' ? 'out' : 'in';
-      return `<div class="it2" data-a="tedit" data-id="${t.id}"><span class="ic">${c.icon}</span><span class="nm">${esc(t.name || (loan ? (t.type === 'in' ? '회수' : '대여') : c.name))}</span><small>${esc(t.sub || (loan ? '' : c.name))}</small><b class="num ${k}">${t.type === 'out' ? '-' : '+'}${fmt(t.amount)}</b></div>`;
+      const ov = LIM && t.type === 'out' && !loan && (LIM.measure === 'all' || t.kind !== 'fix') && t.amount > LIM.limit;
+      return `<div class="it2${ov ? ' ov' : ''}" data-a="tedit" data-id="${t.id}"><span class="ic">${icoHTML(c, '20px')}</span><span class="nm">${esc(t.name || (loan ? (t.type === 'in' ? '회수' : '대여') : c.name))}</span><small>${esc(t.sub || (loan ? '' : c.name))}</small><b class="num ${k}">${t.type === 'out' ? '-' : '+'}${fmt(t.amount)}</b></div>`;
     }).join('');
     let tt = '';
     if (mode === 'bal') { if (inP && (d <= today || list.length)) tt = `<div class="num ${cum[d] < 0 ? 'out' : 'in'}">${cum[d] < 0 ? '-' : ''}${fmt(Math.abs(cum[d]))}</div>`; }
@@ -665,6 +737,7 @@ function renderGrid() {
   const gs = addDays(p.start, -dow(p.start)), ge = addDays(p.end, 6 - dow(p.end));
   const txm = txByDate(gs, ge), evm = eventsByDate(gs, ge);
   const today = todayStr(), mode = S().mode, heat = S().heat, isWeek = ST.view === 'week';
+  const LIM = limitInfo(p), isOver = d => !!(LIM && LIM.over.has(d));
   ensureSel();
   let maxOut = 0, run = 0; const cum = {};
   for (let d = p.start; d <= p.end; d = addDays(d, 1)) { const t = dayTotals(txm.get(d)); maxOut = Math.max(maxOut, t.out); run += t.in - t.out; cum[d] = run; }
@@ -679,7 +752,7 @@ function renderGrid() {
       const d = addDays(ws, i), inP = d >= p.start && d <= p.end, list = txm.get(d), tot = dayTotals(list), evs = evm.get(d) || [];
       if (inP) { wo += tot.out; wi += tot.in; }
       const isHol = evs.some(e => e.type === 'holiday');
-      const cls = ['cell', !inP && 'dim', d === ST.sel && 'sel', d === today && 'today', i === 0 && 'sun', i === 6 && 'sat', isHol && 'hol'].filter(Boolean).join(' ');
+      const cls = ['cell', !inP && 'dim', d === ST.sel && 'sel', d === today && 'today', isOver(d) && 'over', i === 0 && 'sun', i === 6 && 'sat', isHol && 'hol'].filter(Boolean).join(' ');
       const [, dm, dd] = parse(d);
       const label = (dd === 1 || d === p.start) ? `${dm}/${dd}` : dd;
       let bg = '';
@@ -710,7 +783,10 @@ function dayTotalsText(list) {
 function dayBodyHTML(d) {
   const evs = eventsByDate(d, d).get(d) || [];
   const list = (txByDate(d, d).get(d) || []);
-  let h = evs.map((e, i) => {
+  const LIM = limitInfo(periodOf(keyOf(d).y, keyOf(d).m));
+  let h = '';
+  if (LIM && LIM.over.has(d)) h += `<div class="overrow">하루 기준 ${fmt(LIM.limit)}원을 <b>${fmt(LIM.per[d] - LIM.limit)}원</b> 초과했어요</div>`;
+  h += evs.map((e, i) => {
     const c = EVENT_TYPES[e.type].color;
     const edit = e.builtin ? '' : ` data-a="evedit" data-id="${e.id}"`;
     return `<div class="evrow"${edit}><i style="background:${c}"></i><span>${esc(e.title)}</span><small>${e.builtin ? '공휴일' : EVENT_TYPES[e.type].name}${e.cal === 'lunar' ? ' · 음력' : ''}</small></div>`;
@@ -720,7 +796,8 @@ function dayBodyHTML(d) {
     const c = catById(t.cat), loan = isLoan(t);
     const lab = loan ? (t.type === 'in' ? '회수' : '대여') : c.name;
     const cls = loan ? 'loan' : t.type === 'out' ? 'out' : 'in';
-    return `<div class="trow" data-a="tedit" data-id="${t.id}"><div class="ic">${c.icon}</div><div class="m"><b>${esc(t.name || lab)}</b><small>${lab}${t.sub ? ' · ' + esc(t.sub) : ''}${t.kind === 'fix' ? '<span class="tag fix">고정</span>' : ''}${loan ? '<span class="tag">합계 제외</span>' : ''}</small></div><div class="a num ${cls}">${t.type === 'out' ? '-' : '+'}${fmt(t.amount)}</div></div>`;
+    const ov = LIM && t.type === 'out' && !loan && (LIM.measure === 'all' || t.kind !== 'fix') && t.amount > LIM.limit;
+    return `<div class="trow${ov ? ' ov' : ''}" data-a="tedit" data-id="${t.id}"><div class="ic">${icoHTML(c, '34px')}</div><div class="m"><b>${esc(t.name || lab)}</b><small>${lab}${t.sub ? ' · ' + esc(t.sub) : ''}${t.kind === 'fix' ? '<span class="tag fix">고정</span>' : ''}${loan ? '<span class="tag">합계 제외</span>' : ''}</small></div><div class="a num ${cls}">${t.type === 'out' ? '-' : '+'}${fmt(t.amount)}</div></div>`;
   }).join('');
   return h;
 }
@@ -815,6 +892,7 @@ Object.assign(ACT, {
   },
   mode(t) { S().mode = t.dataset.v; persist(); renderAll(); },
   heat() { S().heat = !S().heat; persist(); renderAll(); },
+  opts() { openOpts(); },
   cell(t) { selectDate(t.dataset.d); },
   goto(t) { const d = t.dataset.d; ST.key = keyOf(d); ST.sel = d; if (ST.view === 'month') ST.sheet = 'half'; renderAll(); if (ST.view !== 'day') ensureVisible(); },
   ban(t) { ST.off[t.dataset.k] = true; renderAll(); },
@@ -881,7 +959,7 @@ function openInput(opts = {}) {
   function paintCat() {
     const c = st.cat ? catById(st.cat) : null, drop = q('#iDrop');
     if (c) {
-      drop.innerHTML = `<span class="big">${c.icon}</span><span>${catLabel(c, st.type)}${st.sub ? ' · ' + esc(st.sub) : ''}</span>`;
+      drop.innerHTML = `${icoHTML(c, '30px')}<span>${catLabel(c, st.type)}${st.sub ? ' · ' + esc(st.sub) : ''}</span>`;
       q('#iSubs').innerHTML = c.subs.map(s => `<button class="chip ${st.sub === s ? 'on' : ''}" data-sub="${esc(s)}">${esc(s)}</button>`).join('');
     } else {
       drop.innerHTML = `<span class="ph2">아래 아이콘을 누르거나 여기로 끌어다 놓으세요</span>`;
@@ -891,7 +969,7 @@ function openInput(opts = {}) {
     $$('.icb', m).forEach(b => b.classList.toggle('on', b.dataset.c === st.cat));
   }
   function paintBar() {
-    q('#iBar').innerHTML = usageOrder(st.type).map(c => `<button class="icb" data-c="${c.id}"><span class="e">${c.icon}</span><span class="n">${esc(catLabel(c, st.type))}</span></button>`).join('');
+    q('#iBar').innerHTML = usageOrder(st.type).map(c => `<button class="icb" data-c="${c.id}">${icoHTML(c, '38px')}<span class="n">${esc(catLabel(c, st.type))}</span></button>`).join('');
   }
   function setCat(id, auto) {
     st.cat = id; if (!auto) st.manual = true;
@@ -955,7 +1033,7 @@ function openInput(opts = {}) {
 function bindIconBar(bar, drop, setCat, getSt) {
   bar.addEventListener('pointerdown', e => {
     const b = e.target.closest('.icb'); if (!b) return;
-    const id = b.dataset.c, sx = e.clientX, sy = e.clientY, icon = $('.e', b).textContent;
+    const id = b.dataset.c, sx = e.clientX, sy = e.clientY, icon = $('.ico', b).outerHTML;
     let dragging = false, long = false, ghost = null, moved = false, over = false;
     const timer = setTimeout(() => { if (!moved) { long = true; showSubPop(b, id, setCat, getSt); } }, 450);
     const dropHit = (x, y) => {
@@ -967,7 +1045,7 @@ function bindIconBar(bar, drop, setCat, getSt) {
       if (Math.hypot(dx, dy) > 8) moved = true;
       if (!dragging && !long && dy < -14 && Math.abs(dy) > Math.abs(dx)) {
         dragging = true; clearTimeout(timer);
-        ghost = document.createElement('div'); ghost.className = 'ghost'; ghost.textContent = icon; document.body.appendChild(ghost);
+        ghost = document.createElement('div'); ghost.className = 'ghost'; ghost.innerHTML = icon; document.body.appendChild(ghost);
       }
       if (moved && !dragging) clearTimeout(timer);
       if (dragging) {
@@ -1133,9 +1211,13 @@ function openTotals() {
       const top = r.byCat[0].out || 1;
       h += `<div class="sec">분류별 지출</div>` + r.byCat.map(x => {
         const c = catById(x.id), pct = r.out ? Math.round(x.out / r.out * 100) : 0;
-        return `<div class="crow"><span class="nm">${c.icon} ${esc(c.name)}</span><div class="bw"><div class="bar2" style="width:${Math.max(3, x.out / top * 100)}%"></div></div><span class="v num">${fmt(x.out)} <small style="color:var(--sub)">${pct}%</small></span></div>`;
+        return `<div class="crow"><span class="nm">${icoHTML(c, '20px')} ${esc(c.name)}</span><div class="bw"><div class="bar2" style="width:${Math.max(3, x.out / top * 100)}%"></div></div><span class="v num">${fmt(x.out)} <small style="color:var(--sub)">${pct}%</small></span></div>`;
       }).join('');
     }
+    const fx = {};
+    db.tx.forEach(t => { if (t.date >= from && t.date <= to && t.kind === 'fix' && t.type === 'out' && !isLoan(t) && (!tp.cat || t.cat === tp.cat) && (!tp.kw || (t.name || '').includes(tp.kw))) { const k = (t.name || catById(t.cat).name); (fx[k] = fx[k] || { n: 0, v: 0, cat: t.cat }); fx[k].n++; fx[k].v += t.amount; } });
+    const fxl = Object.entries(fx).sort((a, b) => b[1].v - a[1].v);
+    if (fxl.length) h += `<div class="sec">고정 지출 내역</div>` + fxl.map(([k, x]) => `<div class="kv"><span>${icoHTML(catById(x.cat), '20px')} ${esc(k)} <small style="color:var(--sub)">${x.n}회</small></span><span class="num out">${fmt(x.v)}</span></div>`).join('');
     const lb = loanBalances();
     if (lb.length) {
       h += `<div class="sec">대여/회수 현황 (합계에 포함되지 않아요)</div>` + lb.map(x => `<div class="kv"><span>${esc(x.name)}</span><span class="num loan">${x.v > 0 ? '받을 돈 ' : '갚을 돈 '}${fmt(Math.abs(x.v))}원</span></div>`).join('');
@@ -1154,6 +1236,34 @@ function openTotals() {
   paint();
 }
 
+/* ---------- 보기 메뉴 (달력 위 ‘보기’) ---------- */
+function openOpts() {
+  const m = openModal('', ''); m.id = 'optPanel';
+  const paint = () => {
+    const L = limitInfo(periodOf(ST.key.y, ST.key.m)), f = S().fixView;
+    const sw = (on, s) => `<button class="sw ${on ? 'on' : ''}" data-o="${s}"></button>`;
+    $('.panel', m).innerHTML = `
+    <div class="ph"><b>보기</b><span class="sp"></span><button class="x" data-o="x">✕</button></div>
+    <div class="pb">
+      <div class="row"><label style="width:80px">표시 내역</label><div class="seg">${[['all', '전체'], ['fix', '고정'], ['var', '변동']].map(([v, n]) => `<button data-o="fix" data-v="${v}" class="${f === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
+      <div class="hint">고정만 보면 달력과 위쪽 합계가 고정 지출·수입만 보여줘요.</div>
+      <div class="list-item"><div class="m">지출 히트맵<small>지출이 큰 날일수록 칸을 진하게</small></div>${sw(S().heat, 'heat')}</div>
+      <div class="list-item"><div class="m">하루 기준 초과 표시<small>${L ? `하루 ${fmt(L.limit)}원 · 초과 ${L.over.size}일` : '수입을 입력하면 계산돼요'}</small></div>${sw(S().showLimit !== false, 'lim')}</div>
+      <div class="btns"><button class="btn pri" data-o="x">완료</button></div>
+    </div>`;
+  };
+  m.addEventListener('click', e => {
+    const b = e.target.closest('[data-o]'); if (!b) return;
+    const v = b.dataset.o;
+    if (v === 'x') { closeModal(m); return; }
+    if (v === 'fix') S().fixView = b.dataset.v;
+    else if (v === 'heat') S().heat = !S().heat;
+    else if (v === 'lim') S().showLimit = S().showLimit === false;
+    persist(); paint(); renderAll();
+  });
+  paint();
+}
+
 /* ---------- 설정 ---------- */
 function openSettings() {
   const m = openModal('', 'full'); m.id = 'setPanel';
@@ -1164,7 +1274,8 @@ function openSettings() {
     if (v === 'x') { closeModal(m); renderAll(); }
     else if (v === 'name') { S().nameBy = b.dataset.v; persist(); ST.key = keyOf(ST.sel || todayStr()); renderSettings(); }
     else if (v === 'hol') { S().showHoliday = !S().showHoliday; persist(); renderSettings(); }
-    else if (v === 'heat') { S().heat = !S().heat; persist(); renderSettings(); }
+    else if (v === 'lim') { S().limitMode = b.dataset.v; persist(); renderSettings(); }
+    else if (v === 'evtog') { ST.evOpen = !ST.evOpen; renderSettings(); }
     else if (v === 'cats') openCats();
     else if (v === 'ev') { const ev = db.events.find(x => x.id === b.dataset.id); if (ev) openEvent({ ev }); }
     else if (v === 'evnew') openEvent({ date: todayStr() });
@@ -1175,6 +1286,7 @@ function openSettings() {
   });
   m.addEventListener('change', e => {
     if (e.target.id === 'sBase') { S().baseDay = +e.target.value; persist(); ST.key = keyOf(ST.sel || todayStr()); renderSettings(); }
+    if (e.target.id === 'sLim') { S().limitManual = Math.max(0, parseInt(String(e.target.value).replace(/\D/g, ''), 10) || 0); persist(); renderSettings(); }
   });
 }
 function evRule(ev) {
@@ -1184,7 +1296,7 @@ function evRule(ev) {
 }
 function renderSettings() {
   const m = $('#setPanel'); if (!m) return;
-  const B = S().baseDay, p = periodOf(keyOf(todayStr()).y, keyOf(todayStr()).m);
+  const B = S().baseDay, p = periodOf(keyOf(todayStr()).y, keyOf(todayStr()).m), LIM = limitInfo(p);
   const sw = (on, s) => `<button class="sw ${on ? 'on' : ''}" data-s="${s}"></button>`;
   const evs = [...db.events].sort((a, b) => (a.title > b.title ? 1 : -1));
   $('.panel', m).innerHTML = `
@@ -1194,22 +1306,19 @@ function renderSettings() {
     <div class="row"><label style="width:80px">시작일</label><select class="fld" id="sBase" style="flex:none;width:96px">${Array.from({ length: 28 }, (_, i) => `<option value="${i + 1}" ${B === i + 1 ? 'selected' : ''}>매월 ${i + 1}일</option>`).join('')}</select></div>
     <div class="row"><label style="width:80px">이름 기준</label><div class="seg"><button data-s="name" data-v="end" class="${S().nameBy === 'end' ? 'on' : ''}">종료일이 속한 달</button><button data-s="name" data-v="start" class="${S().nameBy === 'start' ? 'on' : ''}">시작일이 속한 달</button></div></div>
     <div class="hint">지금: ${keyLabel(keyOf(todayStr()))} 가계월 = ${p.start} ~ ${p.end}</div>
-    <div class="sec">표시</div>
+    <div class="sec">보기</div>
     <div class="list-item"><div class="m">공휴일 표시<small>설날·추석 등 음력 공휴일과 대체공휴일은 자동 계산 (임시공휴일은 직접 일정으로 추가)</small></div>${sw(S().showHoliday, 'hol')}</div>
-    <div class="list-item"><div class="m">지출 히트맵<small>지출이 큰 날일수록 칸을 진하게</small></div>${sw(S().heat, 'heat')}</div>
+    <div class="row" style="margin-top:8px"><label style="width:80px">하루 기준</label><div class="seg">${[['net', '(수입−고정)÷일수'], ['gross', '수입÷일수'], ['manual', '직접']].map(([v, n]) => `<button data-s="lim" data-v="${v}" class="${S().limitMode === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
+    ${S().limitMode === 'manual' ? `<div class="row"><label style="width:80px">하루 금액</label><input class="fld" id="sLim" inputmode="numeric" value="${S().limitManual || ''}" placeholder="예: 50000" style="flex:none;width:120px"><span>원</span></div>` : ''}
+    <div class="hint">${LIM ? `이번 가계월 기준: 하루 ${fmt(LIM.limit)}원 · ${S().limitMode === 'gross' ? '고정 지출까지 포함해 비교' : '변동 지출만 비교'}` : '수입을 입력하면 하루 기준 금액이 계산돼요.'} 이 기준을 넘은 날과 내역은 붉게 표시돼요. 켜고 끄기는 달력 위 ‘보기’에서 해요.</div>
     <div class="sec">관리</div>
-    <div class="list-item" data-s="cats"><div class="e">🗂️</div><div class="m">분류 관리<small>아이콘·이름·세부 항목 추가/수정/순서</small></div><span style="color:var(--sub)">›</span></div>
-    <div class="sec">내 일정 (${db.events.length})</div>
-    ${evs.map(ev => `<div class="list-item" data-s="ev" data-id="${ev.id}"><i style="width:8px;height:8px;border-radius:4px;background:${EVENT_TYPES[ev.type].color}"></i><div class="m">${esc(ev.title)}<small>${EVENT_TYPES[ev.type].name} · ${evRule(ev)}</small></div><span style="color:var(--sub)">›</span></div>`).join('') || '<div class="empty">등록한 일정이 없어요</div>'}
-    <div class="btns"><button class="btn" data-s="evnew">+ 일정 추가</button></div>
-    <div class="sec">데이터</div>
-    <div class="kv"><span>내역</span><span class="num">${db.tx.length}건</span></div>
-    <div class="kv"><span>마지막 백업</span><span>${db.lastBackup || '없음'}</span></div>
-    <div class="btns"><button class="btn pri" data-s="backup">백업 파일 저장</button><button class="btn" data-s="restore">백업에서 복원</button><span class="sp"></span><button class="btn dan" data-s="reset">전체 삭제</button></div>
-    <div class="hint">백업 파일은 폰의 다운로드 폴더에 저장돼요. 폰을 바꾸거나 브라우저 데이터를 지우기 전에 꼭 백업하세요.</div>
-    <div class="sec">앱 정보</div>
-    <div class="kv"><span>버전</span><span>${APP_VERSION}</span></div>
-    <div class="btns"><button class="btn" data-s="upd">업데이트 확인</button></div>
+    <div class="list-item" data-s="cats"><div class="e"><span class="ico" style="--c:#4a86c5;--s:30px"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span></div><div class="m">분류 관리<small>아이콘·이름·세부 항목 추가/수정/순서</small></div><span style="color:var(--sub)">›</span></div>
+    <div class="list-item" data-s="evtog"><div class="e"><span class="ico" style="--c:#d9822b;--s:30px"><svg viewBox="0 0 24 24"><path d="M4 6h16v14H4z M4 10h16 M8 3v4 M16 3v4"/></svg></span></div><div class="m">내 일정<small>${db.events.length}개 · 휴무일·기일·기념일</small></div><span style="color:var(--sub)">${ST.evOpen ? '⌃' : '⌄'}</span></div>
+    ${ST.evOpen ? evs.map(ev => `<div class="list-item sub" data-s="ev" data-id="${ev.id}"><i style="width:8px;height:8px;border-radius:4px;background:${EVENT_TYPES[ev.type].color}"></i><div class="m">${esc(ev.title)}<small>${EVENT_TYPES[ev.type].name} · ${evRule(ev)}</small></div><span style="color:var(--sub)">›</span></div>`).join('') + '<div class="btns"><button class="btn" data-s="evnew">+ 일정 추가</button></div>' : ''}
+    <div class="sec">데이터 · 앱</div>
+    <div class="kv"><span>내역 ${db.tx.length}건</span><span>마지막 백업 ${db.lastBackup || '없음'}</span></div>
+    <div class="btns"><button class="btn pri" data-s="backup">백업 저장</button><button class="btn" data-s="restore">복원</button><button class="btn" data-s="upd">업데이트 확인</button><span class="sp"></span><button class="btn dan" data-s="reset">전체 삭제</button></div>
+    <div class="hint">버전 ${APP_VERSION} · 백업 파일은 폰의 다운로드 폴더에 저장돼요. 폰을 바꾸거나 브라우저 데이터를 지우기 전에 꼭 백업하세요.</div>
   </div>`;
 }
 function doBackup() {
@@ -1256,7 +1365,7 @@ const ICON_PALETTE = ['🍚', '🍜', '🍔', '☕', '🍺', '🛒', '🛍️', 
 function openCats() {
   const m = openModal('', 'full'); m.id = 'catPanel';
   const paint = () => {
-    const grp = (title, f) => `<div class="sec">${title}</div>` + db.cats.filter(f).map(c => `<div class="list-item"><div class="e">${c.icon}</div><div class="m">${esc(c.loan ? '대여/회수' : c.name)}<small>${c.subs.length ? esc(c.subs.join(', ')) : '세부 항목 없음'}</small></div>
+    const grp = (title, f) => `<div class="sec">${title}</div>` + db.cats.filter(f).map(c => `<div class="list-item"><div class="e">${icoHTML(c, '30px')}</div><div class="m">${esc(c.loan ? '대여/회수' : c.name)}<small>${c.subs.length ? esc(c.subs.join(', ')) : '세부 항목 없음'}</small></div>
       <button class="mini" data-c="up" data-id="${c.id}">▲</button><button class="mini" data-c="dn" data-id="${c.id}">▼</button><button class="mini" data-c="ed" data-id="${c.id}">✎</button></div>`).join('');
     $('.panel', m).innerHTML = `<div class="ph"><b>분류 관리</b><span class="sp"></span><button class="chip-btn on" data-c="new">+ 새 분류</button><button class="x" data-c="x">✕</button></div>
     <div class="pb">${grp('지출', c => c.type === 'out')}${grp('수입', c => c.type === 'in')}${grp('지출·수입 공통', c => c.type === 'both')}
