@@ -501,7 +501,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.4.3';
+const APP_VERSION = '2.4.4';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -2257,6 +2257,19 @@ function pinAfter(sec) { const c = pinCfg(); if (!c) return; c.after = +sec; pin
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => { });
   }
+  /* 뒤로가기: 열린 창 → 아래 시트 → 종료 확인 순서로 */
+  try {
+    history.replaceState({ g: 0 }, ''); history.pushState({ g: 1 }, '');
+    window.addEventListener('popstate', () => {
+      history.pushState({ g: 1 }, '');
+      if ($('.lockscr')) return;
+      const ms = $$('.modal');
+      if (ms.length) { const top = ms[ms.length - 1]; const x = top.querySelector('.ph .x'); if (x) x.click(); else closeModal(top); return; }
+      if (ST.multi) { multiExit(); return; }
+      if (document.body.classList.contains('sheet-open') || document.body.classList.contains('sheet-full')) { ST.sheet = 'closed'; renderSheet(); return; }
+      askLink('앱을 종료할까요?', [{ k: 'exit', label: '나가기', cls: 'dan' }, { k: 'stay', label: '계속 사용', cls: 'pri' }], k => { if (k === 'exit') { window.__leaving = true; history.go(-2); } });
+    });
+  } catch (e) { }
   /* 자정이 지나 앱이 다시 보일 때 오늘 날짜 갱신 */
   let last = todayStr();
   document.addEventListener('visibilitychange', () => {
