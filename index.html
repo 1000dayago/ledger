@@ -530,6 +530,15 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 .lchip{font-size:11px;font-weight:800;padding:3px 8px;border-radius:9px;background:color-mix(in srgb,var(--acc) 14%,transparent);color:var(--acc);white-space:nowrap}
 .lchip.none{background:color-mix(in srgb,var(--ink) 9%,transparent);color:var(--sub)}.lchip.late{background:var(--warn);color:#fff}
 .ldone{text-align:center;font-size:12.5px;color:var(--sub);padding:10px;font-weight:700}
+
+/* v2.8.0 회수: 차감할 대여 선택 */
+.lkbox{margin:8px 0;border:1px solid var(--line);border-radius:14px;padding:8px;background:var(--soft);max-height:220px;overflow:auto}
+.lkh{display:flex;flex-direction:column;gap:1px;padding:2px 4px 6px}.lkh b{font-size:13px}.lkh small{font-size:11px;color:var(--sub)}
+.lki{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:var(--card);border:1.5px solid transparent;border-radius:12px;padding:8px 10px;margin:4px 0;font:inherit;color:inherit}
+.lki .lkn{flex:1;min-width:0;display:flex;flex-direction:column}.lki b{font-size:14px}.lki small{font-size:11px;color:var(--sub)}.lki .num{font-weight:800;color:var(--acc)}
+.lki.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,var(--card))}
+
+.toast{z-index:9999}
 </style>
 </head>
 <body>
@@ -540,7 +549,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.7.1';
+const APP_VERSION = '2.8.1';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -941,18 +950,26 @@ function recvSummary() {
 }
 
 /* 건별 회수 리스트: 대여 건을 오래된 순으로 회수액으로 차감 */
-function loanLedger() {
-  const today = todayStr(), by = {};
+function loanLedger(skipId) {
+  const today = todayStr(), by = {}, lkPaid = {};
+  const lendIds = new Set(db.tx.filter(t => isLoan(t) && t.type === 'out').map(t => t.id));
   const key = t => (t.name || '(이름 없음)').trim();
   db.tx.filter(isLoan).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (a.order || 0) - (b.order || 0)).forEach(t => {
     const o = by[key(t)] = by[key(t)] || { lends: [], got: 0 };
-    if (t.type === 'out') o.lends.push(t); else o.got += t.amount;
+    if (t.type === 'out') o.lends.push(t);
+    else if (t.id === skipId) { /* 수정 중인 회수는 제외 */ }
+    else if (t.lk && lendIds.has(t.lk) && t.lk !== skipId) lkPaid[t.lk] = (lkPaid[t.lk] || 0) + t.amount;
+    else o.got += t.amount;
+  });
+  /* 직접 연결한 회수가 대여액을 넘으면 남는 분은 이름별 자동 차감으로 */
+  db.tx.filter(t => isLoan(t) && t.type === 'out').forEach(t => {
+    const x = lkPaid[t.id] || 0; if (x > t.amount) { const k = key(t); (by[k] = by[k] || { lends: [], got: 0 }).got += x - t.amount; lkPaid[t.id] = t.amount; }
   });
   const items = [];
   Object.keys(by).forEach(name => {
     let rest = by[name].got;
     by[name].lends.forEach(t => {
-      const paid = Math.min(rest, t.amount); rest -= paid;
+      const pre = lkPaid[t.id] || 0, paid = pre + Math.min(rest, t.amount - pre); rest -= paid - pre;
       const left = t.amount - paid;
       const late = t.due && left > 0 && t.due < today ? daysBetween(t.due, today) : 0;
       items.push({ tx: t, name, amount: t.amount, paid, left, status: left === 0 ? 'done' : paid > 0 ? 'part' : 'none', due: t.due || '', late });
@@ -1449,8 +1466,8 @@ function openInput(opts = {}) {
   const occEv = linkedEv && linkedEv.txId !== edit.id ? linkedEv : null; if (occEv) linkedEv = null;
   const isComb = () => !!(edit && linkedEv && linkedEv.cal === 'solar');
   const st = edit
-    ? { type: edit.type, date: edit.date, name: edit.name || '', cat: edit.cat, sub: edit.sub || '', kind: edit.kind || 'var', manual: true }
-    : { type: opts.type || 'out', date: opts.date || defaultInputDate(), name: opts.name || '', cat: opts.cat || null, sub: '', kind: 'var', manual: !!opts.cat };
+    ? { type: edit.type, date: edit.date, name: edit.name || '', cat: edit.cat, sub: edit.sub || '', kind: edit.kind || 'var', manual: true, lk: edit.lk || '' }
+    : { lk: opts.lk || '', type: opts.type || 'out', date: opts.date || defaultInputDate(), name: opts.name || '', cat: opts.cat || null, sub: '', kind: 'var', manual: !!opts.cat };
   st.mode = edit ? (isComb() ? 'both' : 'tx') : (opts.mode || 'tx');
   st.evType = linkedEv ? linkedEv.type : 'etc'; st.evSame = linkedEv ? linkedEv.date === edit.date : true;
   const m = openModal(`
@@ -1465,6 +1482,7 @@ function openInput(opts = {}) {
     ${occEv ? `<div class="linknote">${linkIc} 반복 일정의 한 회차 · ${esc(occEv.title)}</div>` : ''}
     ${linkedEv && linkedEv.cal !== 'solar' ? `<div class="linknote">${linkIc} 연결된 일정 · ${esc(linkedEv.title)}</div>` : ''}
     <div class="row hide" id="iDueRow"><label style="min-width:62px">회수 예정</label><input type="date" class="fld" id="iDue"><button class="mini" type="button" data-due="clr" aria-label="회수 예정일 지우기">✕</button></div>
+    <div class="lkbox hide" id="iLk"></div>
     <div class="drop" id="iDrop"></div><div class="subs" id="iSubs"></div>
     <div class="iconwrap catwrap"><div class="iconbar" id="iBar"></div></div></div>
     <button class="chip hide" id="iAddEv" data-part="addev" style="margin:8px 0 0">＋ 일정도 같이 기록</button>
@@ -1507,6 +1525,15 @@ function openInput(opts = {}) {
     q('#iName').placeholder = c && c.loan ? '상대 이름' : '가맹점·메모';
     q('#iDueRow').classList.toggle('hide', !(c && c.loan && st.type === 'out'));
     $$('#iBar .icb', m).forEach(b => b.classList.toggle('on', b.dataset.c === st.cat));
+    paintLk();
+  }
+  function paintLk() {
+    const c = st.cat && catById(st.cat), box = q('#iLk'), on = !!(c && c.loan && st.type === 'in');
+    box.classList.toggle('hide', !on); if (!on) return;
+    const open = loanLedger(edit && edit.id).filter(i => i.left > 0);
+    if (st.lk && !open.some(i => i.tx.id === st.lk)) st.lk = '';
+    box.innerHTML = `<div class="lkh"><b>차감할 대여</b><small>${st.lk ? '선택한 대여에서 먼저 차감해요' : '선택 안 하면 같은 이름의 오래된 대여부터 자동 차감'}</small></div>` +
+      (open.length ? open.map(i => `<button type="button" class="lki ${st.lk === i.tx.id ? 'on' : ''}" data-lk="${i.tx.id}"><span class="lkn"><b>${esc(i.name)}</b><small>${i.tx.date.slice(5).replace('-', '/')} 대여 ${fmt(i.amount)}${i.paid ? ' · 받음 ' + fmt(i.paid) : ''}${i.late ? ' · ' + i.late + '일 지남' : ''}</small></span><span class="num">${fmt(i.left)}</span></button>`).join('') : '<div class="hint">남은 대여가 없어요</div>');
   }
   function paintBar() {
     const addB = `<button class="icb add" data-newcat="1" aria-label="항목 추가·수정"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">추가·수정</span></button>`;
@@ -1585,6 +1612,16 @@ function openInput(opts = {}) {
   function shift(n) { st.date = addDays(q('#iDate').value || st.date, n); q('#iDate').value = st.date; }
   q('#iDate').onchange = e => { if (e.target.value) st.date = e.target.value; };
   q('#iAmount').oninput = e => { const d = e.target.value.replace(/\D/g, '').slice(0, 11); e.target.value = d ? fmt(+d) : ''; };
+  q('#iLk').addEventListener('click', e => {
+    const b = e.target.closest('[data-lk]'); if (!b) return;
+    if (st.lk === b.dataset.lk) st.lk = '';
+    else {
+      st.lk = b.dataset.lk;
+      const it = loanLedger(edit && edit.id).find(i => i.tx.id === st.lk);
+      if (it) { st.name = it.name; q('#iName').value = it.name; if (!q('#iAmount').value) q('#iAmount').value = fmt(it.left); }
+    }
+    paintLk();
+  });
   q('#iName').oninput = e => {
     st.name = e.target.value;
     if (!st.manual) { const sg = suggestCat(st.name, st.type); if (sg) setCat(sg, true); }
@@ -1629,6 +1666,7 @@ function openInput(opts = {}) {
         db.events.push(ev); tx.evId = ev.id;
       }
       { const lend = catById(cat).loan && st.type === 'out', dv = lend ? q('#iDue').value : ''; if (dv) tx.due = dv; else delete tx.due; syncDueEv(tx); }
+      { const rcv = catById(cat).loan && st.type === 'in'; if (rcv && st.lk) tx.lk = st.lk; else delete tx.lk; }
       if (rec.name && !catById(cat).loan) learnRule(rec.name, cat);
       const cont = !edit && q('#iCont').checked;
       if (!edit) S().cont = cont;
@@ -2171,9 +2209,21 @@ function doReset(btn) {
   if (!btn.dataset.arm) { btn.dataset.arm = 1; btn.textContent = '정말 삭제? 한 번 더'; setTimeout(() => { btn.dataset.arm = ''; btn.textContent = '전체 삭제'; }, 3500); return; }
   db = freshDB(); persist(); ST.sel = null; ST.sheet = 'closed'; renderSettings(); renderAll(); toast('모든 데이터를 지웠어요');
 }
-function doUpdate() {
-  if (!('serviceWorker' in navigator)) { location.reload(); return; }
-  navigator.serviceWorker.getRegistration().then(r => (r ? r.update() : null)).finally(() => { toast('최신 버전을 불러올게요'); setTimeout(() => location.reload(), 600); });
+async function doUpdate() {
+  toast('최신 버전을 확인하는 중…', 1500);
+  let latest = '';
+  try {
+    const r = await fetch('index.html?chk=' + Date.now(), { cache: 'no-store' });
+    const mm = (await r.text()).match(/APP_VERSION = '([\d.]+)'/); latest = mm ? mm[1] : '';
+  } catch (e) { }
+  if (!latest) { toast('확인하지 못했어요 · 인터넷 연결을 확인해 주세요', 2600); return; }
+  if (latest === APP_VERSION) { toast(`최신 버전이에요 (v${APP_VERSION})`, 2600); return; }
+  try { localStorage.setItem('gagyebu.upd', latest); } catch (e) { }
+  try {
+    if ('caches' in window) await Promise.all((await caches.keys()).map(k => caches.delete(k)));
+    if (navigator.serviceWorker) { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(x => x.unregister())); }
+  } catch (e) { }
+  toast(`v${latest}로 업데이트해요`, 1200); setTimeout(() => location.reload(), 700);
 }
 function bindRestore() {
   $('#fileIn').onchange = e => {
@@ -2418,7 +2468,7 @@ function openRecv() {
     const k = b.dataset.rv, n = b.dataset.n;
     if (k === 'x') closeModal(m);
     else if (k === 'togdone') { ST.showDone = !ST.showDone; paint(); }
-    else if (k === 'collect') { const x = loanLedger().find(i => i.tx.id === b.dataset.id); if (x) openInput({ type: 'in', cat: 'loan', name: x.name, amount: x.left || undefined }); }
+    else if (k === 'collect') { const x = loanLedger().find(i => i.tx.id === b.dataset.id); if (x) openInput({ type: 'in', cat: 'loan', name: x.name, amount: x.left || undefined, lk: x.tx.id }); }
     else if (k === 'got') openInput({ type: 'in', cat: 'loan', name: n });
     else if (k === 'lend') openInput({ type: 'out', cat: 'loan', name: n });
     else if (k === 'add') editRecv(null, n, paint);
@@ -2597,6 +2647,10 @@ function pinAfter(sec) { const c = pinCfg(); if (!c) return; c.after = +sec; pin
   lockNow();
   renderAll();
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { }
+  try {
+    const u = localStorage.getItem('gagyebu.upd');
+    if (u) { localStorage.removeItem('gagyebu.upd'); setTimeout(() => toast(u === APP_VERSION ? `v${APP_VERSION}로 업데이트됐어요` : `업데이트를 불러오지 못했어요 (현재 v${APP_VERSION})`, 4000), 400); }
+  } catch (e) { }
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => { });
   }

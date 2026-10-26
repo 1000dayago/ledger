@@ -1,5 +1,5 @@
 /* 달력 가계부 서비스 워커: 오프라인에서도 열리고, 새 버전은 다음 실행 때 반영돼요 */
-const CACHE = 'gagyebu-v2.7.1';
+const CACHE = 'gagyebu-v2.8.1';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
@@ -10,6 +10,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
+  if (req.cache === 'no-store') return; /* 업데이트 확인은 항상 서버에서 직접 */
   e.respondWith(
     caches.open(CACHE).then(async c => {
       const hit = await c.match(req, { ignoreSearch: true });
