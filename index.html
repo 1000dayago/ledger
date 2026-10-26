@@ -540,7 +540,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.7.0';
+const APP_VERSION = '2.7.1';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -1521,8 +1521,9 @@ function openInput(opts = {}) {
   function paintMode() {
     if (!edit) q('#iModes').innerHTML = modesHTML(st.mode);
     q('#iEv').classList.toggle('hide', st.mode !== 'both');
-    q('#iTxHd').classList.toggle('hide', st.mode !== 'both');
-    q('#iEvDel').classList.toggle('hide', !isComb()); q('#iTxDel').classList.toggle('hide', !isComb());
+    q('#iTxHd').classList.toggle('hide', st.mode !== 'both' && !edit);
+    q('#iDel').classList.toggle('hide', !edit || !isComb());
+    q('#iEvDel').classList.toggle('hide', !isComb()); q('#iTxDel').classList.toggle('hide', !edit);
     q('#iAddEv').classList.toggle('hide', !(edit && !linkedEv && !occEv && st.mode !== 'both'));
     q('#iEvTypes').innerHTML = evTypeList().filter(t => t.id !== 'holiday').map(t => `<button class="icb ${st.evType === t.id ? 'on' : ''}" data-et="${t.id}" style="--c:${t.color}">${evIco(t, '34px')}<span class="n">${esc(t.name)}</span></button>`).join('');
     q('#iEvAdd').innerHTML = `<button class="icb add" data-newtype="1" aria-label="일정 종류 추가·수정"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">추가·수정</span></button>`;
@@ -1552,6 +1553,7 @@ function openInput(opts = {}) {
       db.events = db.events.filter(x => x.id !== linkedEv.id); delete edit.evId; linkedEv = null;
       persist(); st.mode = 'tx'; renderAll(); paintMode(); toast('일정 부분을 지웠어요 · 수입·지출만 남았어요', 1800);
     } else if (a === 'deltx') {
+      if (!isComb()) { deleteFlow(true); return; }
       const ev = linkedEv; db.tx = db.tx.filter(x => x.id !== edit.id); delete ev.txId;
       persist(); closeModal(m); renderAll(); openEvent({ ev }); toast('수입·지출 부분을 지웠어요 · 일정만 남았어요', 1800);
     }
@@ -1638,9 +1640,7 @@ function openInput(opts = {}) {
     };
     finish();
   };
-  const del = q('#iDel'); let armed = 0;
-  del.onclick = () => {
-    if (!armed) { armed = 1; del.textContent = '한 번 더 눌러 삭제'; setTimeout(() => { armed = 0; del.textContent = isComb() ? '전체 삭제' : '삭제'; }, 3000); return; }
+  function deleteFlow(confirmPlain) {
     const doDel = withEv => {
       db.tx = db.tx.filter(t => t.id !== edit.id);
       if (linkedEv) { if (withEv) db.events = db.events.filter(x => x.id !== linkedEv.id); else delete linkedEv.txId; }
@@ -1648,7 +1648,13 @@ function openInput(opts = {}) {
     };
     if (isComb()) doDel(true);
     else if (linkedEv) askLink(`연결된 일정 “${linkedEv.title}”도 같이 지울까요?`, [{ k: 'both', label: '같이 삭제', cls: 'dan' }, { k: 'solo', label: '내역만 삭제' }], k => doDel(k === 'both'));
+    else if (confirmPlain) askLink('이 내역을 삭제할까요?', [{ k: 'del', label: '삭제', cls: 'dan' }, { k: 'x', label: '취소' }], k => { if (k === 'del') doDel(false); });
     else doDel(false);
+  }
+  const del = q('#iDel'); let armed = 0;
+  del.onclick = () => {
+    if (!armed) { armed = 1; del.textContent = '한 번 더 눌러 삭제'; setTimeout(() => { armed = 0; del.textContent = isComb() ? '전체 삭제' : '삭제'; }, 3000); return; }
+    deleteFlow(false);
   };
   if (!edit) setTimeout(() => q('#iAmount').focus(), 120);
 }
