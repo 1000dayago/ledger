@@ -445,6 +445,32 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 .wk>.ws.wf{border-radius:14px 14px 0 0;border-top:0}
 .wk>.ws.wl{border-radius:0 0 14px 14px;margin-bottom:0;padding-bottom:4px}
 .wk>.ws.wf.wl{border-radius:14px}
+
+/* v2.3.6 아이콘줄을 박스 안으로, 빨간 ✕ */
+.txsec .iconwrap,.evsec .iconwrap{border-top:1px solid color-mix(in srgb,var(--ink) 10%,transparent);background:transparent;margin:8px -10px -6px;padding-bottom:0}
+.txsec .iconwrap{margin-bottom:-10px}
+.txsec .iconbar,.evsec .iconbar{background:transparent}
+.txsec .addwrap,.evsec .addwrap{border-left-color:color-mix(in srgb,var(--ink) 10%,transparent)}
+.parthd .sp{display:none}
+.pdel{margin-left:auto;background:var(--out-red,#e5484d);color:#fff;width:24px;height:24px;min-width:24px;line-height:24px;font-size:13px;box-shadow:0 1px 4px rgba(229,72,77,.4)}
+/* v2.3.7 주합 레일: 은은하게 */
+.wk>.ws{background:linear-gradient(180deg,color-mix(in srgb,var(--acc) 7%,transparent),color-mix(in srgb,var(--acc) 3%,transparent));border-top:0;position:relative;font-weight:600;padding:5px 3px 7px 2px;align-items:flex-end}
+.wk>.ws::before{content:"";position:absolute;left:0;right:12%;top:0;border-top:1px dashed color-mix(in srgb,var(--ink) 12%,transparent)}
+.wk>.ws.wf::before{display:none}
+.wk>.ws.wf{border-radius:16px 16px 0 0}.wk>.ws.wl{border-radius:0 0 16px 16px}.wk>.ws.wf.wl{border-radius:16px}
+.ws .wn{background:none;color:color-mix(in srgb,var(--sub) 85%,transparent);font-weight:700;font-size:9.5px;letter-spacing:.2px;padding:0;align-self:flex-end}
+.ws .num{font-size:10px;font-weight:700;opacity:.9}
+.grid-h div:last-child{color:color-mix(in srgb,var(--sub) 80%,transparent);font-weight:600;font-size:11px;letter-spacing:1px}
+/* v2.3.8 주합 원라인 */
+.grid-h,.wk:not(.bigw){grid-template-columns:repeat(7,minmax(0,1fr))}
+.grid-h div:last-child{display:none}
+.wk:not(.bigw){grid-template-rows:1fr auto;margin-bottom:2px}
+.wk:not(.bigw)>.ws,.wk:not(.bigw)>.ws.wf,.wk:not(.bigw)>.ws.wl,.wk:not(.bigw)>.ws.wf.wl{grid-column:1/-1;flex-direction:row;align-items:center;gap:6px;background:none;border:0;border-radius:0;margin:0;padding:1px 6px 0;min-height:14px;height:14px;box-shadow:none;overflow:visible}
+.wk>.ws::before{display:none}
+.wk:not(.bigw)>.ws .wn{order:0;align-self:center;margin:0;font-size:9px;color:var(--sub);opacity:.8}
+.wk:not(.bigw)>.ws::after{content:"";order:1;flex:1;border-top:1px solid color-mix(in srgb,var(--ink) 9%,transparent);margin:0 2px}
+.wk:not(.bigw)>.ws .num{order:2;font-size:10px;font-weight:700;margin-left:0}
+.wk:not(.bigw)>.ws .num+.num{margin-left:4px}
 </style>
 </head>
 <body>
@@ -455,7 +481,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.3.5';
+const APP_VERSION = '2.3.8';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -1224,18 +1250,18 @@ function openInput(opts = {}) {
     <div class="row"><button class="mini" data-i="dm">‹</button><input type="date" class="fld" id="iDate"><button class="mini" data-i="dp">›</button>
       <div class="seg" id="iKind"><button data-k="var">변동</button><button data-k="fix">고정</button></div></div>
     ${linkedEv && linkedEv.cal !== 'solar' ? `<div class="linknote">${linkIc} 연결된 일정 · ${esc(linkedEv.title)}</div>` : ''}
-    <div class="drop" id="iDrop"></div><div class="subs" id="iSubs"></div></div>
+    <div class="drop" id="iDrop"></div><div class="subs" id="iSubs"></div>
+    <div class="iconwrap"><div class="iconbar" id="iBar"></div><div class="addwrap" id="iAdd"></div></div></div>
     <button class="chip hide" id="iAddEv" data-part="addev" style="margin:8px 0 0">＋ 일정도 같이 기록</button>
     <div class="evsec hide" id="iEv">
       <div class="parthd ev"><span class="pk">D</span><b>일정</b><button class="pdel hide" id="iEvDel" data-part="delev" aria-label="일정 부분 삭제">✕</button></div>
       <div class="row"><input class="fld" id="iEvT" placeholder="일정 제목 (비우면 가맹점·메모)" autocomplete="off"></div>
       <div class="row"><label class="chk" style="width:auto"><input type="checkbox" id="iEvSame" checked> 내역과 같은 날</label><input type="date" class="fld hide" id="iEvD"></div>
+      <div class="iconwrap evwrap" id="iEvWrap"><div class="iconbar" id="iEvTypes"></div><div class="addwrap" id="iEvAdd"></div></div>
     </div>
     <div class="btns"><button class="btn dan ${edit ? '' : 'hide'}" id="iDel">${isComb() ? '전체 삭제' : '삭제'}</button>
       <label class="chk ${edit ? 'hide' : ''}"><input type="checkbox" id="iCont" ${S().cont ? 'checked' : ''}> 연속 입력</label><span class="sp"></span><button class="btn pri" id="iSave">저장</button></div>
-  </div>
-  <div class="iconwrap"><div class="iconbar" id="iBar"></div><div class="addwrap" id="iAdd"></div></div>
-  <div class="iconwrap evwrap hide" id="iEvWrap"><span class="evtag">D</span><div class="iconbar" id="iEvTypes"></div><div class="addwrap" id="iEvAdd"></div></div>`);
+  </div>`);
   const q = s => $(s, m);
   q('#iAmount').value = edit ? fmt(edit.amount) : '';
   q('#iName').value = st.name; q('#iDate').value = st.date;
