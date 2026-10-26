@@ -522,6 +522,14 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 .rbtn{display:flex;gap:6px;margin-top:8px}.rbtn button{flex:1;height:34px;border-radius:11px;background:var(--card);font-size:12.5px;font-weight:700}.rbtn .pri{background:var(--acc);color:var(--acc-ink)}
 .ttl{white-space:nowrap}
 @media (max-width:390px){.ttl small{display:none}.top .ib{width:38px}.top{gap:5px}}
+
+/* v2.7.0 회수 리스트 */
+.lrow{display:flex;align-items:center;gap:8px;background:var(--soft);border-radius:14px;padding:10px 12px;margin:6px 0}
+.lrow .ld{flex:1;min-width:0}.lrow b{font-size:14px}.lrow small{display:block;font-size:11px;color:var(--sub);margin-top:1px}.lrow .la{text-align:right}.lrow .la .num{color:var(--acc)}
+.lrow.late{background:color-mix(in srgb,var(--warn) 10%,var(--card))}.lrow.late .la .num{color:var(--warn)}.lrow.done{opacity:.6}
+.lchip{font-size:11px;font-weight:800;padding:3px 8px;border-radius:9px;background:color-mix(in srgb,var(--acc) 14%,transparent);color:var(--acc);white-space:nowrap}
+.lchip.none{background:color-mix(in srgb,var(--ink) 9%,transparent);color:var(--sub)}.lchip.late{background:var(--warn);color:#fff}
+.ldone{text-align:center;font-size:12.5px;color:var(--sub);padding:10px;font-weight:700}
 </style>
 </head>
 <body>
@@ -532,7 +540,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.6.1';
+const APP_VERSION = '2.7.0';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -932,6 +940,40 @@ function recvSummary() {
   return { list, receivable: list.filter(o => o.balance > 0).reduce((a, o) => a + o.balance, 0), payable: list.filter(o => o.balance < 0).reduce((a, o) => a - o.balance, 0) };
 }
 
+/* 건별 회수 리스트: 대여 건을 오래된 순으로 회수액으로 차감 */
+function loanLedger() {
+  const today = todayStr(), by = {};
+  const key = t => (t.name || '(이름 없음)').trim();
+  db.tx.filter(isLoan).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (a.order || 0) - (b.order || 0)).forEach(t => {
+    const o = by[key(t)] = by[key(t)] || { lends: [], got: 0 };
+    if (t.type === 'out') o.lends.push(t); else o.got += t.amount;
+  });
+  const items = [];
+  Object.keys(by).forEach(name => {
+    let rest = by[name].got;
+    by[name].lends.forEach(t => {
+      const paid = Math.min(rest, t.amount); rest -= paid;
+      const left = t.amount - paid;
+      const late = t.due && left > 0 && t.due < today ? daysBetween(t.due, today) : 0;
+      items.push({ tx: t, name, amount: t.amount, paid, left, status: left === 0 ? 'done' : paid > 0 ? 'part' : 'none', due: t.due || '', late });
+    });
+  });
+  return items;
+}
+function syncDueEv(tx) {
+  const i = db.events.findIndex(e => e.dueTx === tx.id);
+  if (tx.due && isLoan(tx) && tx.type === 'out') {
+    const title = `${(tx.name || '').trim() || '대여'} 회수 예정`;
+    if (i >= 0) Object.assign(db.events[i], { title, date: tx.due });
+    else db.events.push({ id: newId('e'), title, type: 'etc', cal: 'solar', date: tx.due, end: '', repeat: 'none', dueTx: tx.id });
+  } else if (i >= 0) db.events.splice(i, 1);
+}
+function pruneDueEvents() {
+  const n = db.events.length;
+  db.events = db.events.filter(e => !e.dueTx || db.tx.some(t => t.id === e.dueTx && t.due));
+  if (db.events.length !== n) saveDB();
+}
+
 /* ---------- 반복 일정의 예정 지출 ---------- */
 const recurBase = ev => (ev.txId && ev.repeat && ev.repeat !== 'none' && ev.cal === 'solar') ? db.tx.find(t => t.id === ev.txId) || null : null;
 function hasTwin(base, ev, s) {
@@ -1305,7 +1347,7 @@ function renderMain() {
   if (ST.view === 'day') { ensureSel(); renderDayView(); } else renderGrid();
 }
 function renderAll() {
-  materializeDue();
+  materializeDue(); pruneDueEvents();
   const keep = $('#cal') ? $('#cal').scrollTop : 0;
   renderTop(); renderMain(); renderSheet();
   $('#cal').scrollTop = keep;
@@ -1422,6 +1464,7 @@ function openInput(opts = {}) {
       <div class="seg" id="iKind"><button data-k="var">변동</button><button data-k="fix">고정</button></div></div>
     ${occEv ? `<div class="linknote">${linkIc} 반복 일정의 한 회차 · ${esc(occEv.title)}</div>` : ''}
     ${linkedEv && linkedEv.cal !== 'solar' ? `<div class="linknote">${linkIc} 연결된 일정 · ${esc(linkedEv.title)}</div>` : ''}
+    <div class="row hide" id="iDueRow"><label style="min-width:62px">회수 예정</label><input type="date" class="fld" id="iDue"><button class="mini" type="button" data-due="clr" aria-label="회수 예정일 지우기">✕</button></div>
     <div class="drop" id="iDrop"></div><div class="subs" id="iSubs"></div>
     <div class="iconwrap catwrap"><div class="iconbar" id="iBar"></div></div></div>
     <button class="chip hide" id="iAddEv" data-part="addev" style="margin:8px 0 0">＋ 일정도 같이 기록</button>
@@ -1439,6 +1482,7 @@ function openInput(opts = {}) {
       <label class="chk ${edit ? 'hide' : ''}"><input type="checkbox" id="iCont" ${S().cont ? 'checked' : ''}> 연속 입력</label><span class="sp"></span><button class="btn pri" id="iSave">저장</button></div>
   </div>`);
   const q = s => $(s, m);
+  if (edit && edit.due) q('#iDue').value = edit.due;
   q('#iAmount').value = edit ? fmt(edit.amount) : (opts.amount ? fmt(opts.amount) : '');
   q('#iName').value = st.name; q('#iDate').value = st.date;
   if (linkedEv) { q('#iEvT').value = linkedEv.title; q('#iEvD').value = linkedEv.date; q('#iEvSame').checked = st.evSame; }
@@ -1461,6 +1505,7 @@ function openInput(opts = {}) {
       q('#iSubs').innerHTML = '';
     }
     q('#iName').placeholder = c && c.loan ? '상대 이름' : '가맹점·메모';
+    q('#iDueRow').classList.toggle('hide', !(c && c.loan && st.type === 'out'));
     $$('#iBar .icb', m).forEach(b => b.classList.toggle('on', b.dataset.c === st.cat));
   }
   function paintBar() {
@@ -1516,6 +1561,7 @@ function openInput(opts = {}) {
   m.addEventListener('click', e => {
     const t = e.target;
     const b = t.closest('button'); if (!b) return;
+    if (b.dataset.due) { q('#iDue').value = ''; return; }
     if (b.dataset.part) partAction(b.dataset.part);
     else if (b.dataset.md) {
       if (b.dataset.md === 'ev') { const d = q('#iDate').value || st.date, nm = q('#iName').value.trim(); closeModal(m); openEvent({ date: d, title: nm }); }
@@ -1580,6 +1626,7 @@ function openInput(opts = {}) {
         const ev = { id: newId('e'), title, type: st.evType, cal: 'solar', date: evd, end: '', repeat: q('#iEvRep').value, until: q('#iEvRep').value === 'none' ? '' : q('#iEvUn').value, wd: q('#iEvRep').value === 'weekly' ? evWdOf(evd) : [], txId: tx.id };
         db.events.push(ev); tx.evId = ev.id;
       }
+      { const lend = catById(cat).loan && st.type === 'out', dv = lend ? q('#iDue').value : ''; if (dv) tx.due = dv; else delete tx.due; syncDueEv(tx); }
       if (rec.name && !catById(cat).loan) learnRule(rec.name, cat);
       const cont = !edit && q('#iCont').checked;
       if (!edit) S().cont = cont;
@@ -2324,6 +2371,17 @@ function openReport(year) {
 }
 
 /* ---------- 받을 돈 ---------- */
+function openRecvList(showDone) {
+  const hid = !!S().hideSum, V = v => hid ? MASK : fmt(v), all = loanLedger();
+  const open = all.filter(x => x.status !== 'done').sort((a, b) => (b.late - a.late) || (a.due && b.due ? (a.due < b.due ? -1 : 1) : a.due ? -1 : b.due ? 1 : (a.tx.date < b.tx.date ? -1 : 1)));
+  const done = all.filter(x => x.status === 'done').sort((a, b) => a.tx.date < b.tx.date ? 1 : -1);
+  const row = x => `<div class="lrow ${x.status}${x.late ? ' late' : ''}" data-rv="collect" data-id="${x.tx.id}"><div class="ld"><b>${esc(x.name)}</b><small>${shortMD(x.tx.date)} 대여${x.due ? ` · 예정 ${shortMD(x.due)}` : ''}</small></div>
+    <div class="la"><b class="num">${x.status === 'done' ? V(x.amount) : V(x.left)}원</b><small>${x.status === 'done' ? '회수 완료' : `${x.paid ? `받은 ${V(x.paid)} / ` : ''}${V(x.amount)}원`}</small></div>
+    <span class="lchip ${x.late ? 'late' : x.status}">${x.late ? '연체 ' + x.late + '일' : x.status === 'part' ? '일부 회수' : x.status === 'done' ? '완료' : '미회수'}</span></div>`;
+  return `<div class="sec">회수 리스트 <span class="lg">대여 ${open.length}건 남음</span></div>`
+    + (open.length ? open.map(row).join('') : '<div class="empty" style="padding:10px 0">회수할 대여가 없어요. 지출에서 <b>대여</b> 아이콘으로 입력하면 여기에 올라와요.</div>')
+    + (done.length ? `<div class="ldone" data-rv="togdone">완료 ${done.length}건 ${ST.showDone ? '접기 ▴' : '보기 ▾'}</div>${ST.showDone ? done.map(row).join('') : ''}` : '');
+}
 function openRecv() {
   const m = openModal('', 'full'); m.id = 'rcvPanel';
   const paint = () => {
@@ -2334,6 +2392,8 @@ function openRecv() {
     <div class="pb rep">
       <div class="rkpi two"><div><small>받을 돈 합계</small><b class="pos">${V(rc.receivable)}원</b></div><div><small>갚을 돈 합계</small><b class="neg">${V(rc.payable)}원</b></div></div>
       <div class="hint" style="margin:4px 0 10px">빌려준 돈(대여 − 회수)에 "정기적으로 받기로 한 돈"이 기한마다 더해져요. 받으면 <b>받음</b>으로 입력하세요.</div>
+      ${openRecvList()}
+      <div class="sec">사람별 · 정기 받을 돈</div>
       ${rc.list.length ? rc.list.map(o => {
         const per = o.recvs.filter(r => r.amount > 0 && r.repeat !== 'once');
         const late = per.length && o.balance > 0 ? Math.ceil(o.balance / per[0].amount) : 0;
@@ -2351,6 +2411,8 @@ function openRecv() {
     const b = e.target.closest('[data-rv]'); if (!b) return;
     const k = b.dataset.rv, n = b.dataset.n;
     if (k === 'x') closeModal(m);
+    else if (k === 'togdone') { ST.showDone = !ST.showDone; paint(); }
+    else if (k === 'collect') { const x = loanLedger().find(i => i.tx.id === b.dataset.id); if (x) openInput({ type: 'in', cat: 'loan', name: x.name, amount: x.left || undefined }); }
     else if (k === 'got') openInput({ type: 'in', cat: 'loan', name: n });
     else if (k === 'lend') openInput({ type: 'out', cat: 'loan', name: n });
     else if (k === 'add') editRecv(null, n, paint);
