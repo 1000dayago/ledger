@@ -556,6 +556,14 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 .brow .bl{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:13px}.brow .bl .bw{flex:1;min-width:0;height:8px;background:color-mix(in srgb,var(--sub) 14%,transparent);border-radius:4px;overflow:hidden}
 .brow .bar2{display:block;height:8px;border-radius:4px;opacity:1}.brow .bar2.o{background:var(--out,#3b6fd8)}.brow .bar2.i{background:var(--in,#d9534f)}
 .brow .bl .num{width:92px;text-align:right;flex:none;font-weight:700}
+
+/* v2.11.1 패턴: 눈에 안 띄는 옅은 회색 */
+.lk-pat .pd{fill:transparent;stroke:color-mix(in srgb,var(--sub) 38%,transparent);stroke-width:2.5}
+.lk-pat .pd.on{fill:color-mix(in srgb,var(--sub) 34%,transparent);stroke:color-mix(in srgb,var(--sub) 38%,transparent);r:14}
+.lk-pat .pl{stroke:color-mix(in srgb,var(--sub) 34%,transparent);stroke-width:6;opacity:1}
+.lk-pat .pd{stroke:color-mix(in srgb,var(--sub) 30%,transparent)}
+.lk-pat .pd.on{fill:color-mix(in srgb,var(--sub) 22%,transparent);stroke:color-mix(in srgb,var(--sub) 30%,transparent)}
+.lk-pat .pl{stroke:color-mix(in srgb,var(--sub) 22%,transparent)}
 </style>
 </head>
 <body>
@@ -566,7 +574,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.11.0';
+const APP_VERSION = '2.11.1';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
