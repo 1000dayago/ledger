@@ -264,6 +264,8 @@ select.fld{appearance:none}
 .icb.add .ico.plus{background:none;border:1.5px dashed var(--sub);color:var(--sub);--s:38px}
 .icb.add .ico.plus svg{width:50%;height:50%}
 .icb.add .n{color:var(--sub)}
+
+.lkic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle}
 </style>
 </head>
 <body>
@@ -274,7 +276,7 @@ select.fld{appearance:none}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.5.0';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -332,16 +334,24 @@ const DEFAULT_CATS = [
   { id: 'etcin', name: '기타수입', icon: '➕', type: 'in', subs: [] },
 ];
 const EVENT_TYPES = {
-  holiday: { name: '공휴일', color: '#d6453d' },
-  off: { name: '휴무일', color: '#e08a1e' },
-  memorial: { name: '기일·기념일', color: '#8a5cc7' },
-  etc: { name: '일정', color: '#2f9e6f' },
+  holiday: { name: '공휴일', color: '#d6453d', icon: '🎌' },
+  off: { name: '휴무일', color: '#e08a1e', icon: '🏖️' },
+  memorial: { name: '기일·기념일', color: '#8a5cc7', icon: '🕯️' },
+  etc: { name: '일정', color: '#2f9e6f', icon: '📅' },
 };
+/* 기본 종류 + 내가 추가한 종류 */
+const evType = k => EVENT_TYPES[k] || (db.evTypes || []).find(t => t.id === k) || EVENT_TYPES.etc;
+const evTypeList = () => [...Object.entries(EVENT_TYPES).map(([id, t]) => ({ id, ...t })), ...(db.evTypes || [])];
+function evIco(t, size) {
+  const k = String(t.icon || '').replace(/\uFE0F/g, ''), d = ICON_SVG[k], st = size ? `--s:${size};` : '';
+  if (!d) return `<span class="ico em" style="--c:${t.color};${st}">${t.icon || ''}</span>`;
+  return `<span class="ico" style="--c:${t.color};${st}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d[1]}"/></svg></span>`;
+}
 
 /* ---------- 저장소 ---------- */
 let db = null;
 function freshDB() {
-  return { v: 1, settings: { ...DEFAULT_SETTINGS }, cats: JSON.parse(JSON.stringify(DEFAULT_CATS)), tx: [], events: [], rules: {}, lastBackup: null, nextId: 1 };
+  return { v: 1, settings: { ...DEFAULT_SETTINGS }, cats: JSON.parse(JSON.stringify(DEFAULT_CATS)), tx: [], events: [], evTypes: [], rules: {}, lastBackup: null, nextId: 1 };
 }
 function loadDB() {
   let raw = null;
@@ -366,6 +376,7 @@ function adopt(o) {
   d.settings.catsV = 2;
   if (Array.isArray(o.tx)) d.tx = o.tx.filter(t => t && /^\d{4}-\d{2}-\d{2}$/.test(t.date) && isFinite(t.amount));
   if (Array.isArray(o.events)) d.events = o.events;
+  if (Array.isArray(o.evTypes)) d.evTypes = o.evTypes.filter(t => t && t.id && t.name);
   if (o.rules && typeof o.rules === 'object') d.rules = o.rules;
   d.lastBackup = o.lastBackup || null;
   let max = 0;
@@ -402,6 +413,13 @@ const ICON_SVG = {
   '➕': ['#2f9e6b','M12 5v14 M5 12h14'],
   '🛡': ['#3b8f7a','M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z M9 12l2 2 4-4'],
   '🏦': ['#4a6fa5','M3 10l9-6 9 6z M5 10v8 M9 10v8 M15 10v8 M19 10v8 M3 20h18'],
+  '🎌': ['#d6453d','M6 21V4 M6 5h12l-3 4 3 4H6'],
+  '🏖': ['#e08a1e','M12 3a9 9 0 0 1 9 9H3a9 9 0 0 1 9-9z M12 12v9 M8 21h8'],
+  '🕯': ['#8a5cc7','M12 3c1.5 2 2 3 0 5-2-2-1.5-3 0-5z M9 11h6v10H9z M9 14h6'],
+  '📅': ['#2f9e6f','M4 6h16v14H4z M4 10h16 M8 3v4 M16 3v4'],
+  '🎂': ['#d6568a','M4 14h16v6H4z M6 14v-3h12v3 M12 11V7 M12 4v1'],
+  '💍': ['#2c9ac4','M12 21a6 6 0 1 0 0-12 6 6 0 0 0 0 12z M9 6l1.5-3h3L15 6'],
+  '🎉': ['#d9822b','M4 20l5-13 8 8z M14 4v2 M19 9h2 M18 4l-1 1'],
   '❓': ['#7d8794','M9 9a3 3 0 1 1 4 2.8c-.7.4-1 1-1 1.7 M12 17h.01']
 };
 function icoHTML(c, size) {
@@ -671,9 +689,14 @@ function ensureSel() {
   if (!ST.sel || ST.sel < addDays(p.start, -6) || ST.sel > addDays(p.end, 6)) ST.sel = (t >= p.start && t <= p.end) ? t : p.start;
 }
 function selectDate(d, opts = {}) {
-  ST.sel = d;
+  ST.sel = d; ST.picked = true;
   if (ST.view === 'day') { const k = keyOf(d); ST.key = k; }
-  else if (ST.view === 'month' && ST.sheet === 'closed' && !opts.keepClosed) ST.sheet = 'half';
+  else if (ST.view === 'month') {
+    /* 내역도 일정도 없는 날: 내역창을 열지 않음 (이미 열려 있으면 닫음) */
+    const hasTx = db.tx.some(t => t.date === d), hasEv = (eventsByDate(d, d).get(d) || []).length > 0;
+    if (!hasTx && !hasEv) ST.sheet = 'closed';
+    else if (ST.sheet === 'closed' && !opts.keepClosed) ST.sheet = 'half';
+  }
   renderAll();
   if (ST.view !== 'day') ensureVisible();
 }
@@ -698,6 +721,7 @@ function renderTop() {
     <button class="ttl" data-a="pick">${keyLabel(ST.key)} <small>가계월</small></button>
     <button class="nav" data-a="next">›</button>
     <span class="sp"></span>
+    <button class="ib" data-a="lock" title="지금 잠그기" aria-label="잠금"><svg class="lkic" viewBox="0 0 24 24"><path d="M6 11h12v9H6z M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/></svg></button>
     <button class="ib" data-a="tot" title="기간 합계">Σ</button>
     <button class="ib" data-a="set" title="설정">⚙</button>
   </div>
@@ -733,7 +757,7 @@ function bannersHTML() {
 /* ---------- 달력 ---------- */
 function evBars(evs, max) {
   if (!evs.length) return '';
-  const shown = evs.slice(0, max).map(e => `<div class="evl" style="background:${EVENT_TYPES[e.type].color}">${esc(e.title)}</div>`).join('');
+  const shown = evs.slice(0, max).map(e => `<div class="evl" style="background:${evType(e.type).color}">${esc(e.title)}</div>`).join('');
   return shown + (evs.length > max ? `<div class="more">+${evs.length - max}</div>` : '');
 }
 function amountHTML(tot, mode, cum, showCum) {
@@ -754,7 +778,7 @@ function bigWeekHTML(ws, p, txm, evm, cum, mode, today) {
     const isHol = evs.some(e => e.type === 'holiday');
     const cls = ['wr', !inP && 'dim', d === ST.sel && 'sel', d === today && 'today', LIM && LIM.over.has(d) && 'over', i === 0 && 'sun', i === 6 && 'sat', isHol && 'hol'].filter(Boolean).join(' ');
     const [, dm, dd] = parse(d);
-    const chips = evs.map(e => `<span class="evc" style="background:${EVENT_TYPES[e.type].color}">${esc(e.title)}</span>`).join('');
+    const chips = evs.map(e => `<span class="evc" style="background:${evType(e.type).color}">${esc(e.title)}</span>`).join('');
     const items = list.map(t => {
       const c = catById(t.cat), loan = isLoan(t), k = loan ? 'loan' : t.type === 'out' ? 'out' : 'in';
       const ov = LIM && t.type === 'out' && !loan && (LIM.measure === 'all' || t.kind !== 'fix') && t.amount > LIM.limit;
@@ -823,9 +847,9 @@ function dayBodyHTML(d) {
   let h = '';
   if (LIM && LIM.over.has(d)) h += `<div class="overrow">하루 기준 ${fmt(LIM.limit)}원을 <b>${fmt(LIM.per[d] - LIM.limit)}원</b> 초과했어요</div>`;
   h += evs.map((e, i) => {
-    const c = EVENT_TYPES[e.type].color;
+    const c = evType(e.type).color;
     const edit = e.builtin ? '' : ` data-a="evedit" data-id="${e.id}"`;
-    return `<div class="evrow"${edit}><i style="background:${c}"></i><span>${esc(e.title)}</span><small>${e.builtin ? '공휴일' : EVENT_TYPES[e.type].name}${e.cal === 'lunar' ? ' · 음력' : ''}</small></div>`;
+    return `<div class="evrow"${edit}><i style="background:${c}"></i><span>${esc(e.title)}</span><small>${e.builtin ? '공휴일' : evType(e.type).name}${e.cal === 'lunar' ? ' · 음력' : ''}</small></div>`;
   }).join('');
   if (!list.length) h += `<div class="empty">내역이 없어요. 아래 ＋ 버튼으로 추가해 보세요.</div>`;
   h += list.map(t => {
@@ -929,10 +953,11 @@ Object.assign(ACT, {
   mode(t) { S().mode = t.dataset.v; persist(); renderAll(); },
   heat() { S().heat = !S().heat; persist(); renderAll(); },
   opts() { openOpts(); },
+  lock() { if (pinOn()) lockNow(); else { toast('먼저 PIN을 만들어요'); pinSetup(); } },
   cell(t) { selectDate(t.dataset.d); },
   goto(t) { const d = t.dataset.d; ST.key = keyOf(d); ST.sel = d; if (ST.view === 'month') ST.sheet = 'half'; renderAll(); if (ST.view !== 'day') ensureVisible(); },
   ban(t) { ST.off[t.dataset.k] = true; renderAll(); },
-  sheetClose() { ST.sheet = 'closed'; renderAll(); },
+  sheetClose() { ST.sheet = 'closed'; ST.picked = false; renderAll(); },
   dprev() { selectDate(addDays(ST.sel, -1)); },
   dnext() { selectDate(addDays(ST.sel, 1)); },
 });
@@ -952,7 +977,7 @@ Object.assign(ACT, {
 })();
 /* ===== 달력 가계부 · 입력 시트(내역) + 이벤트 시트 ===== */
 function defaultInputDate() {
-  return (ST.sel && (ST.sheet !== 'closed' || ST.view !== 'month')) ? ST.sel : todayStr();
+  return (ST.sel && (ST.picked || ST.sheet !== 'closed' || ST.view !== 'month')) ? ST.sel : todayStr();
 }
 function revealDate(d) {
   const p = periodOf(ST.key.y, ST.key.m);
@@ -1134,7 +1159,6 @@ function openEvent(opts = {}) {
   <div class="ph"><b>${ev ? '일정 수정' : '일정 추가'}</b><span class="sp"></span><button class="x" data-e="x">✕</button></div>
   <div class="pb">
     <div class="row"><input class="fld" id="eTitle" placeholder="제목 (예: 할아버지 기일, 휴무)" autocomplete="off"></div>
-    <div class="chips" id="eType"></div>
     <div class="row"><label>달력</label><div class="seg" id="eCal"><button data-c="solar">양력</button><button data-c="lunar">음력</button></div>
       <div class="seg" id="eRep" style="margin-left:auto"></div></div>
     <div id="eSolar"><div class="row"><label>날짜</label><input type="date" class="fld" id="eDate"></div>
@@ -1146,12 +1170,14 @@ function openEvent(opts = {}) {
       <div class="row" id="eLyRow"><label>음력 연도</label><input type="number" class="fld" id="eLy" style="max-width:110px"></div>
       <div class="hint" id="eLhint"></div></div>
     <div class="btns"><button class="btn dan ${ev ? '' : 'hide'}" id="eDel">삭제</button><span class="sp"></span><button class="btn pri" id="eSave">저장</button></div>
-  </div>`);
+  </div>
+  <div class="iconbar" id="eBar"></div>`);
   const q = s => $(s, m);
   q('#eTitle').value = st.title; q('#eDate').value = st.date || base; q('#eEnd').value = st.end || '';
   q('#eLm').value = st.lm; q('#eLd').value = st.ld; q('#eLeap').checked = !!st.leap; q('#eLy').value = st.ly;
   function paint() {
-    q('#eType').innerHTML = Object.entries(EVENT_TYPES).map(([k, v]) => `<button class="chip ${st.type === k ? 'on' : ''}" data-t="${k}">${v.name}</button>`).join('');
+    q('#eBar').innerHTML = evTypeList().map(t => `<button class="icb ${st.type === t.id ? 'on' : ''}" data-t="${t.id}" style="--c:${t.color}">${evIco(t, '38px')}<span class="n">${esc(t.name)}</span></button>`).join('')
+      + `<button class="icb add" data-newtype="1" aria-label="종류 추가"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">추가</span></button>`;
     $$('#eCal button', m).forEach(b => b.classList.toggle('on', b.dataset.c === st.cal));
     const reps = [['none', '안 함'], ['yearly', '매년']].concat(st.cal === 'solar' ? [['monthly', '매월']] : []);
     if (!reps.find(r => r[0] === st.repeat)) st.repeat = 'none';
@@ -1171,6 +1197,7 @@ function openEvent(opts = {}) {
   m.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.e === 'x') closeModal(m);
+    else if (b.dataset.newtype) openEvType(id => { st.type = id; paint(); });
     else if (b.dataset.t) { st.type = b.dataset.t; paint(); }
     else if (b.dataset.c) { st.cal = b.dataset.c; paint(); }
     else if (b.dataset.r) { st.repeat = b.dataset.r; paint(); }
@@ -1212,6 +1239,37 @@ Object.assign(ACT, {
   evadd() { openEvent({ date: ST.sel }); },
   evedit(t) { const ev = db.events.find(x => x.id === t.dataset.id); if (ev) openEvent({ ev }); },
 });
+
+/* ---------- 일정 종류 추가 (일정 입력 줄 맨 끝 ＋) ---------- */
+const EV_PALETTE = ['🎂', '💍', '🕯️', '🏖️', '🎉', '✈️', '🏥', '🎓', '💼', '🛠️', '📌', '🏃', '🎁', '👪', '🐶', '📚'];
+const EV_COLORS = ['#d6453d', '#e08a1e', '#c9a227', '#2f9e6f', '#2c9ac4', '#4a6fa5', '#8a5cc7', '#d6568a'];
+function openEvType(done) {
+  const st = { icon: '📌', color: EV_COLORS[3] };
+  const m = openModal(`<div class="ph"><b>일정 종류 추가</b><span class="sp"></span><button class="x" data-v="x">✕</button></div>
+  <div class="pb">
+    <div class="row"><input class="fld" id="vIcon" style="flex:none;width:64px;text-align:center;font-size:22px" maxlength="4"><input class="fld" id="vName" placeholder="종류 이름 (예: 생일)" maxlength="8"></div>
+    <div class="chips" style="gap:4px">${EV_PALETTE.map(i => `<button class="chip" style="font-size:18px;padding:2px 6px" data-i="${i}">${i}</button>`).join('')}</div>
+    <div class="row" id="vCol" style="gap:8px">${EV_COLORS.map(c => `<button data-col="${c}" style="width:30px;height:30px;border-radius:9px;background:${c}"></button>`).join('')}</div>
+    <div class="btns"><span class="sp"></span><button class="btn pri" id="vSave">저장</button></div>
+  </div>`);
+  const q = s => $(s, m);
+  q('#vIcon').value = st.icon;
+  const paint = () => $$('#vCol button', m).forEach(b => { b.style.outline = b.dataset.col === st.color ? '3px solid var(--ink)' : 'none'; b.style.outlineOffset = '2px'; }); paint();
+  m.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.v === 'x') closeModal(m);
+    else if (b.dataset.i) q('#vIcon').value = b.dataset.i;
+    else if (b.dataset.col) { st.color = b.dataset.col; paint(); }
+  });
+  q('#vSave').onclick = () => {
+    const name = q('#vName').value.trim(), icon = q('#vIcon').value.trim() || '📌';
+    if (!name) { toast('이름을 입력해 주세요'); return; }
+    if (evTypeList().some(t => t.name === name)) { toast('이미 있는 종류예요'); return; }
+    db.evTypes = db.evTypes || [];
+    const t = { id: newId('v'), name, icon, color: st.color };
+    db.evTypes.push(t); persist(); closeModal(m); done(t.id);
+  };
+}
 /* ===== 달력 가계부 · 기간 합계, 설정, 분류 관리, 백업 ===== */
 
 /* ---------- 기간 합계 ---------- */
@@ -1358,7 +1416,7 @@ function renderSettings() {
     <div class="sec">관리</div>
     <div class="list-item" data-s="cats"><div class="e"><span class="ico" style="--c:#4a86c5;--s:30px"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span></div><div class="m">분류 관리<small>아이콘·이름·세부 항목 추가/수정/순서</small></div><span style="color:var(--sub)">›</span></div>
     <div class="list-item" data-s="evtog"><div class="e"><span class="ico" style="--c:#d9822b;--s:30px"><svg viewBox="0 0 24 24"><path d="M4 6h16v14H4z M4 10h16 M8 3v4 M16 3v4"/></svg></span></div><div class="m">내 일정<small>${db.events.length}개 · 휴무일·기일·기념일</small></div><span style="color:var(--sub)">${ST.evOpen ? '⌃' : '⌄'}</span></div>
-    ${ST.evOpen ? evs.map(ev => `<div class="list-item sub" data-s="ev" data-id="${ev.id}"><i style="width:8px;height:8px;border-radius:4px;background:${EVENT_TYPES[ev.type].color}"></i><div class="m">${esc(ev.title)}<small>${EVENT_TYPES[ev.type].name} · ${evRule(ev)}</small></div><span style="color:var(--sub)">›</span></div>`).join('') + '<div class="btns"><button class="btn" data-s="evnew">+ 일정 추가</button></div>' : ''}
+    ${ST.evOpen ? evs.map(ev => `<div class="list-item sub" data-s="ev" data-id="${ev.id}"><i style="width:8px;height:8px;border-radius:4px;background:${evType(ev.type).color}"></i><div class="m">${esc(ev.title)}<small>${evType(ev.type).name} · ${evRule(ev)}</small></div><span style="color:var(--sub)">›</span></div>`).join('') + '<div class="btns"><button class="btn" data-s="evnew">+ 일정 추가</button></div>' : ''}
     <div class="sec">데이터 · 보안 · 앱</div>
     <div class="list-item"><div class="m">PIN 잠금 (6자리)<small>앱을 열 때 숫자 6개만 누르면 바로 열려요</small></div>${sw(pinOn(), 'pin')}</div>
     ${pinOn() ? `<div class="row"><label style="width:80px">잠금 시점</label><div class="seg">${[[0, '나가면 즉시'], [60, '1분 뒤'], [300, '5분 뒤']].map(([v, n]) => `<button data-s="pinafter" data-v="${v}" class="${(pinCfg().after || 0) === v ? 'on' : ''}">${n}</button>`).join('')}</div><span class="sp"></span><button class="btn" data-s="pinchg">PIN 변경</button></div>` : ''}
