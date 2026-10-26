@@ -501,7 +501,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.4.4';
+const APP_VERSION = '2.4.5';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -1335,6 +1335,7 @@ function openInput(opts = {}) {
       <div class="row"><label class="chk" style="width:auto"><input type="checkbox" id="iEvSame" checked> 내역과 같은 날</label><input type="date" class="fld hide" id="iEvD"></div>
       <div class="row"><label style="min-width:34px">반복</label><div class="seg rep" id="iEvRepSeg"><button type="button" data-rp="none">안 함</button><button type="button" data-rp="daily">매일</button><button type="button" data-rp="weekly">매주</button><button type="button" data-rp="monthly">매월</button><button type="button" data-rp="yearly">매년</button></div><input type="hidden" id="iEvRep" value="none"></div>
       <div class="hint hide" id="iEvHint" style="margin:-2px 0 6px;color:var(--acc);font-weight:700"></div>
+      <div class="row hide" id="iEvWdRow"><label style="min-width:34px">요일</label><div class="wdays" id="iEvWd"></div></div>
       <div class="row hide" id="iEvUnRow"><label style="min-width:34px">종료</label><input type="date" class="fld" id="iEvUn"><button class="mini" type="button" data-rp="clr" aria-label="종료일 지우기">✕</button></div>
       <div class="iconwrap evwrap" id="iEvWrap"><div class="iconbar" id="iEvTypes"></div><div class="addwrap" id="iEvAdd"></div></div>
     </div>
@@ -1387,15 +1388,19 @@ function openInput(opts = {}) {
     q('#iEvWrap').classList.toggle('hide', st.mode !== 'both');
     q('#iEvD').classList.toggle('hide', st.evSame);
   }
-  if (linkedEv) { q('#iEvRep').value = linkedEv.repeat || 'none'; q('#iEvUn').value = linkedEv.until || ''; }
+  if (linkedEv) { q('#iEvRep').value = linkedEv.repeat || 'none'; q('#iEvUn').value = linkedEv.until || ''; st.evWd = (linkedEv.wd || []).slice(); }
+  const evWdOf = d => (st.evWd && st.evWd.length ? st.evWd : [dow(d)]);
   const repUi = () => {
     const r = q('#iEvRep').value, d = (st.evSame ? q('#iDate').value : q('#iEvD').value) || st.date;
     $$('#iEvRepSeg button', m).forEach(b => b.classList.toggle('on', b.dataset.rp === r));
     q('#iEvUnRow').classList.toggle('hide', r === 'none');
+    q('#iEvWdRow').classList.toggle('hide', r !== 'weekly');
+    if (r === 'weekly' && d) { const wv = evWdOf(d); q('#iEvWd').innerHTML = DOW_KO.map((n, i) => `<button type="button" data-wd2="${i}" class="${wv.includes(i) ? 'on' : ''}">${n}</button>`).join(''); }
     const h = q('#iEvHint'); h.classList.toggle('hide', r === 'none');
-    if (r !== 'none' && d) { const [, mm, dd] = parse(d); h.textContent = '↻ ' + { daily: `${mm}/${dd}부터 매일`, weekly: `${mm}/${dd}부터 매주 ${DOW_KO[dow(d)]}요일`, monthly: `${mm}/${dd}부터 매월 ${+dd}일`, yearly: `매년 ${+mm}월 ${+dd}일` }[r] + ' · 종료일을 비우면 계속'; }
+    if (r !== 'none' && d) { const [, mm, dd] = parse(d); h.textContent = '↻ ' + { daily: `${mm}/${dd}부터 매일`, weekly: `${mm}/${dd}부터 매주 ` + evWdOf(d).slice().sort().map(i => DOW_KO[i]).join('·'), monthly: `${mm}/${dd}부터 매월 ${+dd}일`, yearly: `매년 ${+mm}월 ${+dd}일` }[r] + ' · 종료일을 비우면 계속'; }
   };
-  m.addEventListener('click', e => { const b = e.target.closest('[data-rp]'); if (b) { if (b.dataset.rp === 'clr') q('#iEvUn').value = ''; else q('#iEvRep').value = b.dataset.rp; } setTimeout(repUi, 0); });
+  m.addEventListener('click', e => { const w = e.target.closest('[data-wd2]'); if (w) { const d = (st.evSame ? q('#iDate').value : q('#iEvD').value) || st.date, i = +w.dataset.wd2, cur = new Set(evWdOf(d)); cur.has(i) ? cur.delete(i) : cur.add(i); if (!cur.size) cur.add(i); st.evWd = [...cur]; }
+    const b = e.target.closest('[data-rp]'); if (b) { if (b.dataset.rp === 'clr') q('#iEvUn').value = ''; else q('#iEvRep').value = b.dataset.rp; } setTimeout(repUi, 0); });
   m.addEventListener('input', () => setTimeout(repUi, 0)); repUi();
   paintType(); paintKind(); paintMode();
   q('#iEvSame').onchange = e => { st.evSame = e.target.checked; if (!st.evSame && !q('#iEvD').value) q('#iEvD').value = q('#iDate').value || st.date; paintMode(); };
@@ -1469,14 +1474,14 @@ function openInput(opts = {}) {
           const nd = st.evSame ? rec.date : (q('#iEvD').value || rec.date), dl = daysBetween(linkedEv.date, nd);
           if (linkedEv.end) linkedEv.end = addDays(linkedEv.end, dl);
           if (linkedEv.until) linkedEv.until = addDays(linkedEv.until, dl);
-          linkedEv.repeat = q('#iEvRep').value; linkedEv.until = linkedEv.repeat === 'none' ? '' : q('#iEvUn').value; linkedEv.wd = [];
+          linkedEv.repeat = q('#iEvRep').value; linkedEv.until = linkedEv.repeat === 'none' ? '' : q('#iEvUn').value; linkedEv.wd = linkedEv.repeat === 'weekly' ? evWdOf(nd) : [];
           linkedEv.date = nd; linkedEv.type = st.evType; linkedEv.title = q('#iEvT').value.trim() || linkedEv.title;
         }
       } else { tx = { id: newId('t'), order: Date.now(), ...rec }; db.tx.push(tx); }
       if ((!edit || st.addEv) && st.mode === 'both') {
         const title = q('#iEvT').value.trim() || rec.name || catById(cat).name;
         const evd = st.evSame ? rec.date : (q('#iEvD').value || rec.date);
-        const ev = { id: newId('e'), title, type: st.evType, cal: 'solar', date: evd, end: '', repeat: q('#iEvRep').value, until: q('#iEvRep').value === 'none' ? '' : q('#iEvUn').value, wd: [], txId: tx.id };
+        const ev = { id: newId('e'), title, type: st.evType, cal: 'solar', date: evd, end: '', repeat: q('#iEvRep').value, until: q('#iEvRep').value === 'none' ? '' : q('#iEvUn').value, wd: q('#iEvRep').value === 'weekly' ? evWdOf(evd) : [], txId: tx.id };
         db.events.push(ev); tx.evId = ev.id;
       }
       if (rec.name && !catById(cat).loan) learnRule(rec.name, cat);
