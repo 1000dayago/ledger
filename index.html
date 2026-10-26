@@ -415,17 +415,47 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 .evt.off{--c:var(--sub);font-weight:600;padding-left:6px}
 .evt .lkic{width:12px;height:12px;margin-right:2px}
 .it2 .nm .evt{margin-left:4px}
+
+.evwrap{background:color-mix(in srgb,#8a5cc7 10%,var(--card));align-items:stretch}
+.evwrap .evtag{flex:none;width:22px;display:flex;align-items:center;justify-content:center;background:#8a5cc7;color:#fff;font-weight:800;font-size:12px}
+.evwrap .iconbar{background:transparent}
+
+.txsec{border-radius:16px;padding:10px;margin:4px 0;background:color-mix(in srgb,var(--pri,#1f7a5c) 8%,var(--card))}
+.txsec .fld,.txsec .amt{background:var(--card)}
+.pdel{width:22px;height:22px;min-width:22px;padding:0;border-radius:50%;border:0;background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn);font-size:12px;line-height:22px;text-align:center;margin-left:8px;font-weight:700}
+
+/* v2.3.4 dock compact */
+#dock{height:54px;padding:6px 8px;gap:6px;border-radius:27px}
+#dock .seg{padding:2px;border-radius:18px}
+#dock .seg button{height:30px;min-width:30px;padding:0 8px;border-radius:15px;font-size:12px}
+.todayb{height:30px;padding:0 9px;border-radius:15px;font-size:11px;background:var(--soft)}
+.fabs3{display:flex;gap:10px;align-items:flex-start}
+.fabc{position:relative;width:38px;height:38px;border-radius:50%;color:#fff;padding:0;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.3)}
+.fabc svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.fabc small{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:0;font-size:9px;line-height:11px;color:var(--sub);font-weight:700;white-space:nowrap}
+.fabc.out{background:linear-gradient(145deg,#4a8df0,var(--out))}
+.fabc.in{background:linear-gradient(145deg,#f0707a,var(--in))}
+.fabc.ev{background:linear-gradient(145deg,#a77ae0,#8a5cc7)}
+#dock{align-items:center}
+.fabs3{margin-bottom:10px}
+#dock{height:60px}.fabs3{margin-bottom:12px}.fabc small{margin-top:1px}
+
+/* v2.3.5 주합 한 덩어리 */
+.wk>.ws{border-radius:0;box-shadow:none;margin-bottom:-3px;padding-bottom:7px;background:color-mix(in srgb,var(--ink) 9%,var(--card));border-top:1px solid color-mix(in srgb,var(--ink) 8%,transparent)}
+.wk>.ws.wf{border-radius:14px 14px 0 0;border-top:0}
+.wk>.ws.wl{border-radius:0 0 14px 14px;margin-bottom:0;padding-bottom:4px}
+.wk>.ws.wf.wl{border-radius:14px}
 </style>
 </head>
 <body>
 <div id="app"><div id="top"></div><div id="cal"></div></div>
 <div id="sheet"></div>
-<div id="dock"><div class="seg" id="dockView"></div><button class="todayb" data-a="today" aria-label="오늘로 이동">오늘</button><span class="sp"></span><button class="fabb out" id="fab-out" data-a="fab" data-t="out" aria-label="지출 추가"><em>＋</em>지출</button><button class="fabb in" id="fab-in" data-a="fab" data-t="in" aria-label="수입 추가"><em>＋</em>수입</button></div>
+<div id="dock"><div class="seg" id="dockView"></div><button class="todayb" data-a="today" aria-label="오늘로 이동">오늘</button><span class="sp"></span><div class="fabs3"><button class="fabc out" id="fab-out" data-a="fab" data-t="out" aria-label="지출 추가"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 9v8H9"/></svg><small>지출</small></button><button class="fabc ev" id="fab-ev" data-a="fab" data-t="ev" aria-label="일정 추가"><svg viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14" rx="3"/><path d="M8 3.5v4M16 3.5v4M4 10h16M12 12.5v5M9.5 15h5"/></svg><small>일정</small></button><button class="fabc in" id="fab-in" data-a="fab" data-t="in" aria-label="수입 추가"><svg viewBox="0 0 24 24"><path d="M17 7L7 17M7 9v8h8"/></svg><small>수입</small></button></div></div>
 <input type="file" id="fileIn" accept=".json,application/json" class="hide">
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.3.1';
+const APP_VERSION = '2.3.5';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -991,7 +1021,7 @@ function renderGrid() {
     const wsum = mode === 'out' ? (wo ? `<span class="out num">-${compact(wo)}</span>` : '')
       : mode === 'both' ? (wo ? `<span class="out num">-${compact(wo)}</span>` : '') + (wi ? `<span class="in num">+${compact(wi)}</span>` : '')
         : (wo || wi ? `<span class="num ${net < 0 ? 'out' : 'in'}">${net < 0 ? '-' : ''}${compact(net)}</span>` : '');
-    html += `<div class="wk ${compactRow ? 'compact' : ''}">${cells}<div class="ws"><em class="wn">${weekOfYear(ws)}주</em>${wsum}</div></div>`;
+    html += `<div class="wk ${compactRow ? 'compact' : ''}">${cells}<div class="ws${w === 0 ? ' wf' : ''}${w === weeks - 1 ? ' wl' : ''}"><em class="wn">${weekOfYear(ws)}주</em>${wsum}</div></div>`;
   }
   $('#cal').innerHTML = html;
 }
@@ -1187,25 +1217,25 @@ function openInput(opts = {}) {
   const m = openModal(`
   <div class="ph"><div class="seg" id="iSeg"><button data-t="out">지출</button><button data-t="in">수입</button></div>${edit ? '' : `<div class="modes" id="iModes"></div>`}<b>${edit ? '내역 수정' : ''}</b><span class="sp"></span><button class="x" data-i="x">✕</button></div>
   <div class="pb">
-    <div class="parthd tx hide" id="iTxHd"><span class="pk">M</span><b>수입 · 지출</b><span class="sp"></span><button class="pdel hide" id="iTxDel" data-part="deltx">이 부분 삭제</button></div>
+    <div class="txsec" id="iTxSec"><div class="parthd tx hide" id="iTxHd"><span class="pk">M</span><b>수입 · 지출</b><button class="pdel hide" id="iTxDel" data-part="deltx" aria-label="수입·지출 부분 삭제">✕</button></div>
     <div class="amt out" id="iAmt"><span>₩</span><input id="iAmount" inputmode="numeric" placeholder="0" autocomplete="off"></div>
     <div class="chips" style="margin:8px 0 0"><button class="chip" data-add="1000">+1천</button><button class="chip" data-add="10000">+1만</button><button class="chip" data-add="50000">+5만</button><button class="chip" data-add="0">지움</button></div>
     <div class="row"><input class="fld" id="iName" placeholder="가맹점·메모" autocomplete="off"></div>
     <div class="row"><button class="mini" data-i="dm">‹</button><input type="date" class="fld" id="iDate"><button class="mini" data-i="dp">›</button>
       <div class="seg" id="iKind"><button data-k="var">변동</button><button data-k="fix">고정</button></div></div>
     ${linkedEv && linkedEv.cal !== 'solar' ? `<div class="linknote">${linkIc} 연결된 일정 · ${esc(linkedEv.title)}</div>` : ''}
-    <div class="drop" id="iDrop"></div><div class="subs" id="iSubs"></div>
+    <div class="drop" id="iDrop"></div><div class="subs" id="iSubs"></div></div>
     <button class="chip hide" id="iAddEv" data-part="addev" style="margin:8px 0 0">＋ 일정도 같이 기록</button>
     <div class="evsec hide" id="iEv">
-      <div class="parthd ev"><span class="pk">D</span><b>일정</b><span class="sp"></span><button class="pdel hide" id="iEvDel" data-part="delev">이 부분 삭제</button></div>
+      <div class="parthd ev"><span class="pk">D</span><b>일정</b><button class="pdel hide" id="iEvDel" data-part="delev" aria-label="일정 부분 삭제">✕</button></div>
       <div class="row"><input class="fld" id="iEvT" placeholder="일정 제목 (비우면 가맹점·메모)" autocomplete="off"></div>
-      <div class="evtypes" id="iEvTypes"></div>
       <div class="row"><label class="chk" style="width:auto"><input type="checkbox" id="iEvSame" checked> 내역과 같은 날</label><input type="date" class="fld hide" id="iEvD"></div>
     </div>
     <div class="btns"><button class="btn dan ${edit ? '' : 'hide'}" id="iDel">${isComb() ? '전체 삭제' : '삭제'}</button>
       <label class="chk ${edit ? 'hide' : ''}"><input type="checkbox" id="iCont" ${S().cont ? 'checked' : ''}> 연속 입력</label><span class="sp"></span><button class="btn pri" id="iSave">저장</button></div>
   </div>
-  <div class="iconwrap"><div class="iconbar" id="iBar"></div><div class="addwrap" id="iAdd"></div></div>`);
+  <div class="iconwrap"><div class="iconbar" id="iBar"></div><div class="addwrap" id="iAdd"></div></div>
+  <div class="iconwrap evwrap hide" id="iEvWrap"><span class="evtag">D</span><div class="iconbar" id="iEvTypes"></div><div class="addwrap" id="iEvAdd"></div></div>`);
   const q = s => $(s, m);
   q('#iAmount').value = edit ? fmt(edit.amount) : '';
   q('#iName').value = st.name; q('#iDate').value = st.date;
@@ -1246,7 +1276,9 @@ function openInput(opts = {}) {
     q('#iTxHd').classList.toggle('hide', st.mode !== 'both');
     q('#iEvDel').classList.toggle('hide', !isComb()); q('#iTxDel').classList.toggle('hide', !isComb());
     q('#iAddEv').classList.toggle('hide', !(edit && !linkedEv && st.mode !== 'both'));
-    q('#iEvTypes').innerHTML = evTypeList().filter(t => t.id !== 'holiday').map(t => `<button class="icb sm ${st.evType === t.id ? 'on' : ''}" data-et="${t.id}" style="--c:${t.color}">${evIco(t, '28px')}<span class="n">${esc(t.name)}</span></button>`).join('');
+    q('#iEvTypes').innerHTML = evTypeList().filter(t => t.id !== 'holiday').map(t => `<button class="icb ${st.evType === t.id ? 'on' : ''}" data-et="${t.id}" style="--c:${t.color}">${evIco(t, '34px')}<span class="n">${esc(t.name)}</span></button>`).join('');
+    q('#iEvAdd').innerHTML = `<button class="icb add" data-newtype="1" aria-label="일정 종류 추가"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">추가</span></button>`;
+    q('#iEvWrap').classList.toggle('hide', st.mode !== 'both');
     q('#iEvD').classList.toggle('hide', st.evSame);
   }
   paintType(); paintKind(); paintMode();
@@ -1273,6 +1305,7 @@ function openInput(opts = {}) {
       else { st.mode = b.dataset.md; paintMode(); }
     }
     else if (b.dataset.et) { st.evType = b.dataset.et; paintMode(); }
+    else if (b.dataset.newtype) openEvType(id => { st.evType = id; paintMode(); });
     else if (b.dataset.i === 'x') closeModal(m);
     else if (b.dataset.t) { st.type = b.dataset.t; paintType(); }
     else if (b.dataset.k) { st.kind = b.dataset.k; paintKind(); }
@@ -1512,7 +1545,7 @@ function openEvent(opts = {}) {
 }
 
 Object.assign(ACT, {
-  fab(t) { openInput({ type: t && t.dataset.t === 'in' ? 'in' : 'out' }); },
+  fab(t) { const k = t && t.dataset.t; if (k === 'ev') openEvent({ date: defaultInputDate() }); else openInput({ type: k === 'in' ? 'in' : 'out' }); },
   tedit(t) {
     if (ST.multi) {
       const id = t.dataset.id; if (ST.multi.has(id)) ST.multi.delete(id); else ST.multi.add(id);
