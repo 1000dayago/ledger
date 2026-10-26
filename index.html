@@ -491,6 +491,12 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 .seg.rep{flex-wrap:nowrap;overflow-x:auto}.seg.rep button{padding:0 9px;white-space:nowrap}
 .wdays{display:flex;gap:4px;flex:1}.wdays button{flex:1;height:34px;border-radius:10px;background:var(--soft);font-weight:700;font-size:13px;color:var(--sub)}
 .wdays button.on{background:var(--acc);color:var(--acc-ink)}.wdays button:first-child:not(.on){color:var(--hol)}.wdays button:last-child:not(.on){color:var(--sat)}
+
+/* v2.5.0 예정 지출 */
+.trow.plan,.it2.plan{opacity:.72}
+.trow.plan .ic{filter:saturate(.7)}
+.trow.plan{border:1px dashed color-mix(in srgb,var(--ink) 22%,transparent)}
+.tag.plan{background:color-mix(in srgb,var(--acc) 14%,transparent);color:var(--acc)}
 </style>
 </head>
 <body>
@@ -501,7 +507,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.4.5';
+const APP_VERSION = '2.5.1';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -878,9 +884,45 @@ function eventsByDate(from, to) {
 
 /* ---------- 거래 집계 ---------- */
 const fixMatch = t => { const f = S().fixView; return f === 'all' || (f === 'fix' ? t.kind === 'fix' : t.kind !== 'fix'); };
+/* ---------- 반복 일정의 예정 지출 ---------- */
+const recurBase = ev => (ev.txId && ev.repeat && ev.repeat !== 'none' && ev.cal === 'solar') ? db.tx.find(t => t.id === ev.txId) || null : null;
+function hasTwin(base, ev, s) {
+  return db.tx.some(t => t.date === s && (t.evId === ev.id || (t.type === base.type && t.cat === base.cat && (t.amount === base.amount || (t.name || '') === (base.name || '')))));
+}
+function plannedTx(from, to) {
+  const today = todayStr(), out = [];
+  const lo = from > today ? from : addDays(today, 1), hi = to < addDays(today, 400) ? to : addDays(today, 400);
+  if (lo > hi) return out;
+  db.events.forEach(ev => {
+    const base = recurBase(ev); if (!base) return;
+    eventStarts(ev, lo, hi).forEach(({ s }) => {
+      if (s <= base.date || (ev.pskip || []).includes(s) || (ev.matd || []).includes(s) || hasTwin(base, ev, s)) return;
+      out.push({ id: 'p:' + ev.id + ':' + s, order: 1e15, date: s, type: base.type, amount: base.amount, cat: base.cat, sub: base.sub, kind: base.kind, name: base.name, evId: ev.id, planned: true });
+    });
+  });
+  return out;
+}
+function materializeTx(ev, base, s) {
+  const t = { id: newId('t'), order: Date.now() + (db.nextId || 0), date: s, type: base.type, amount: base.amount, cat: base.cat, sub: base.sub, kind: base.kind, name: base.name, evId: ev.id };
+  db.tx.push(t); ev.matd = [...(ev.matd || []), s]; return t;
+}
+function materializeDue() {
+  const today = todayStr(); let ch = false;
+  db.events.forEach(ev => {
+    const base = recurBase(ev); if (!base) return;
+    const lo0 = addDays(today, -400), lo = (ev.date > lo0 ? ev.date : lo0);
+    eventStarts(ev, lo, today).forEach(({ s }) => {
+      if (s <= base.date || s > today || (ev.pskip || []).includes(s) || (ev.matd || []).includes(s) || hasTwin(base, ev, s)) return;
+      materializeTx(ev, base, s); ch = true;
+    });
+  });
+  if (ch) saveDB();
+  return ch;
+}
 function txByDate(from, to, raw) {
   const map = new Map();
   db.tx.forEach(t => { if (t.date >= from && t.date <= to && (raw || fixMatch(t))) { if (!map.has(t.date)) map.set(t.date, []); map.get(t.date).push(t); } });
+  plannedTx(from, to).forEach(t => { if (raw || fixMatch(t)) { if (!map.has(t.date)) map.set(t.date, []); map.get(t.date).push(t); } });
   map.forEach(a => a.sort((x, y) => (x.order || 0) - (y.order || 0)));
   return map;
 }
@@ -895,7 +937,7 @@ function dayTotals(list) {
 function summarize(from, to, f = {}) {
   const r = { out: 0, in: 0, byCat: [], n: 0, days: 0, maxDay: null, fixOut: 0 };
   const cat = {}, day = {};
-  db.tx.forEach(t => {
+  db.tx.concat(plannedTx(from, to)).forEach(t => {
     if (t.date < from || t.date > to || isLoan(t)) return;
     if (f.cat && t.cat !== f.cat) return;
     if (f.kind && !(f.kind === 'fix' ? t.kind === 'fix' : t.kind !== 'fix')) return;
@@ -926,7 +968,7 @@ function limitInfo(p) {
   else { if (s.in <= 0) return null; limit = Math.floor((s.in - s.fixOut) / days); }
   if (!(limit > 0)) return null;
   const per = {};
-  db.tx.forEach(t => {
+  db.tx.concat(plannedTx(p.start, p.end)).forEach(t => {
     if (t.date >= p.start && t.date <= p.end && t.type === 'out' && !isLoan(t) && (measure === 'all' || t.kind !== 'fix')) per[t.date] = (per[t.date] || 0) + t.amount;
   });
   const over = new Set(Object.keys(per).filter(d => per[d] > limit));
@@ -980,7 +1022,7 @@ function selectDate(d, opts = {}) {
   if (ST.view === 'day') { const k = keyOf(d); ST.key = k; }
   else if (ST.view === 'month') {
     /* 내역도 일정도 없는 날: 내역창을 열지 않음 (이미 열려 있으면 닫음) */
-    const hasTx = db.tx.some(t => t.date === d), hasEv = (eventsByDate(d, d).get(d) || []).length > 0;
+    const hasTx = db.tx.some(t => t.date === d) || plannedTx(d, d).length > 0, hasEv = (eventsByDate(d, d).get(d) || []).length > 0;
     if (!hasTx && !hasEv) ST.sheet = 'closed';
     else if (ST.sheet === 'closed' && !opts.keepClosed) ST.sheet = 'half';
   }
@@ -1002,6 +1044,7 @@ function renderTop() {
   const p = periodOf(ST.key.y, ST.key.m), fv = S().fixView;
   const s = summarize(p.start, p.end, fv === 'all' ? {} : { kind: fv });
   const L = limitInfo(p), m = S().mode, hid = !!S().hideSum, M = v => hid ? '•••••' : fmt(v);
+  const pl = plannedTx(p.start, p.end).filter(t => !isLoan(t) && (fv === 'all' || (fv === 'fix' ? t.kind === 'fix' : t.kind !== 'fix'))), plOut = pl.filter(t => t.type === 'out').reduce((a, t) => a + t.amount, 0);
   const bal = s.in - s.out, pct = s.in > 0 ? Math.round(s.out / s.in * 100) : null;
   $('#top').innerHTML = `
   <div class="top">
@@ -1018,7 +1061,7 @@ function renderTop() {
     <div class="h1"><small>남은 돈${fv === 'all' ? '' : ' · ' + (fv === 'fix' ? '고정만' : '변동만')}</small><b class="big num">${hid ? '•••••' : fmt(bal)}<i>원</i></b></div>
     <div class="pills num"><span class="pl"><u class="d in"></u>수입 <b>${M(s.in)}</b></span><span class="pl"><u class="d out"></u>지출 <b>${M(s.out)}</b></span></div>
     ${pct === null ? '' : `<div class="meter ${pct >= 100 ? 'full' : ''}"><i style="width:${Math.min(100, pct)}%"></i></div>`}
-    <div class="hrow num"><span>${shortMD(p.start)} ~ ${shortMD(p.end)}${pct === null || hid ? '' : ` · 수입의 ${pct}% 사용`}</span>${L ? `<span>하루 기준 <b>${M(L.limit)}</b>${hid ? '' : '원'}</span><span class="${L.over.size ? 'warn' : ''}">초과 <b>${L.over.size}</b>일</span>` : ''}</div>
+    <div class="hrow num"><span>${shortMD(p.start)} ~ ${shortMD(p.end)}${pct === null || hid ? '' : ` · 수입의 ${pct}% 사용`}${plOut ? ` · 예정 ${M(plOut)} 포함` : ''}</span>${L ? `<span>하루 기준 <b>${M(L.limit)}</b>${hid ? '' : '원'}</span><span class="${L.over.size ? 'warn' : ''}">초과 <b>${L.over.size}</b>일</span>` : ''}</div>
   </div>
   <div class="bar">
     <div class="seg">${[['out', '지출'], ['both', '수입·지출'], ['bal', '누적']].map(([v, n]) => `<button data-a="mode" data-v="${v}" class="${m === v ? 'on' : ''}">${n}</button>`).join('')}</div>
@@ -1060,8 +1103,8 @@ function amountHTML(tot, mode, cum, showCum) {
   return `<div class="am num ${cum < 0 ? 'out' : 'in'}">${cum < 0 ? '-' : ''}${compact(cum)}</div>`;
 }
 /* 같이 저장한 일정+내역은 한 덩어리로 보이게: 같은 날이면 내역 카드에 일정을 붙이고 일정 줄은 숨김 */
-const comboEv = (t, d) => { const e = t.evId && db.events.find(x => x.id === t.evId); return e && e.date === d && t.date === d ? e : null; };
-const isMerged = (e, list) => !!(e.txId && list.some(t => t.id === e.txId && comboEv(t, t.date)));
+const comboEv = (t, d) => { const e = t.evId && db.events.find(x => x.id === t.evId); if (!e) return null; if (e.repeat && e.repeat !== 'none') return t.date === d ? e : null; return e.date === d && t.date === d ? e : null; };
+const isMerged = (e, list) => !!list.some(t => (t.id === e.txId || t.evId === e.id) && comboEv(t, t.date));
 const evTag = e => `<span class="evt" style="--c:${evType(e.type).color}">${evIco(evType(e.type), '16px')}${esc(e.title)}</span>`;
 function iconsRow(list) {
   const seen = [];
@@ -1079,7 +1122,7 @@ function bigWeekHTML(ws, p, txm, evm, cum, mode, today, wn) {
     const items = list.map(t => {
       const c = catById(t.cat), loan = isLoan(t), k = loan ? 'loan' : t.type === 'out' ? 'out' : 'in';
       const ov = LIM && t.type === 'out' && !loan && (LIM.measure === 'all' || t.kind !== 'fix') && t.amount > LIM.limit;
-      return `<div class="it2${ov ? ' ov' : ''}" data-a="tedit" data-id="${t.id}"><span class="ic">${icoHTML(c, '20px')}</span><span class="nm">${esc(t.name || (loan ? (t.type === 'in' ? '회수' : '대여') : c.name))}${comboEv(t, d) ? ' ' + evTag(comboEv(t, d)) : ''}</span><small>${esc(t.sub || (loan ? '' : c.name))}</small><b class="num ${k}">${t.type === 'out' ? '-' : '+'}${fmt(t.amount)}</b></div>`;
+      return `<div class="it2${ov ? ' ov' : ''}${t.planned ? ' plan' : ''}" data-a="tedit" data-id="${t.id}"><span class="ic">${icoHTML(c, '20px')}</span><span class="nm">${esc(t.name || (loan ? (t.type === 'in' ? '회수' : '대여') : c.name))}${comboEv(t, d) ? ' ' + evTag(comboEv(t, d)) : ''}</span><small>${esc(t.sub || (loan ? '' : c.name))}</small><b class="num ${k}">${t.type === 'out' ? '-' : '+'}${fmt(t.amount)}</b></div>`;
     }).join('');
     let tt = '';
     if (mode === 'bal') { if (inP && (d <= today || list.length)) tt = `<div class="num ${cum[d] < 0 ? 'out' : 'in'}">${cum[d] < 0 ? '-' : ''}${fmt(Math.abs(cum[d]))}</div>`; }
@@ -1156,7 +1199,7 @@ function dayBodyHTML(d) {
     const cls = loan ? 'loan' : t.type === 'out' ? 'out' : 'in';
     const ov = LIM && t.type === 'out' && !loan && (LIM.measure === 'all' || t.kind !== 'fix') && t.amount > LIM.limit;
     const ms = ST.multi && ST.multi.has(t.id);
-    return `<div class="trow${ov ? ' ov' : ''}${ms ? ' msel' : ''}" data-a="tedit" data-id="${t.id}">${ST.multi ? `<span class="mck ${ms ? 'on' : ''}"></span>` : ''}<div class="ic">${icoHTML(c, '34px')}</div><div class="m"><b>${esc(t.name || lab)}</b><small>${lab}${t.sub ? ' · ' + esc(t.sub) : ''}${t.kind === 'fix' ? '<span class="tag fix">고정</span>' : ''}${loan ? '<span class="tag">합계 제외</span>' : ''}</small>${comboEv(t, d) ? `<div class="evline">${evTag(comboEv(t, d))}</div>` : (t.evId && db.events.find(x => x.id === t.evId) ? `<div class="evline"><span class="evt off">${linkIc}${esc(db.events.find(x => x.id === t.evId).title)} · ${shortMD(db.events.find(x => x.id === t.evId).date)}</span></div>` : '')}</div><div class="a num ${cls}">${t.type === 'out' ? '-' : '+'}${fmt(t.amount)}</div></div>`;
+    return `<div class="trow${ov ? ' ov' : ''}${ms ? ' msel' : ''}${t.planned ? ' plan' : ''}" data-a="tedit" data-id="${t.id}">${ST.multi ? `<span class="mck ${ms ? 'on' : ''}"></span>` : ''}<div class="ic">${icoHTML(c, '34px')}</div><div class="m"><b>${esc(t.name || lab)}</b><small>${lab}${t.sub ? ' · ' + esc(t.sub) : ''}${t.planned ? '<span class="tag plan">예정</span>' : ''}${t.kind === 'fix' ? '<span class="tag fix">고정</span>' : ''}${loan ? '<span class="tag">합계 제외</span>' : ''}</small>${comboEv(t, d) ? `<div class="evline">${evTag(comboEv(t, d))}</div>` : (t.evId && db.events.find(x => x.id === t.evId) ? `<div class="evline"><span class="evt off">${linkIc}${esc(db.events.find(x => x.id === t.evId).title)} · ${shortMD(db.events.find(x => x.id === t.evId).date)}</span></div>` : '')}</div><div class="a num ${cls}">${t.type === 'out' ? '-' : '+'}${fmt(t.amount)}</div></div>`;
   }).join('');
   return h;
 }
@@ -1213,6 +1256,7 @@ function renderMain() {
   if (ST.view === 'day') { ensureSel(); renderDayView(); } else renderGrid();
 }
 function renderAll() {
+  materializeDue();
   const keep = $('#cal') ? $('#cal').scrollTop : 0;
   renderTop(); renderMain(); renderSheet();
   $('#cal').scrollTop = keep;
@@ -1310,6 +1354,7 @@ function askLink(msg, btns, cb) {
 function openInput(opts = {}) {
   const edit = opts.tx || null;
   let linkedEv = edit && edit.evId ? db.events.find(x => x.id === edit.evId) || null : null;
+  const occEv = linkedEv && linkedEv.txId !== edit.id ? linkedEv : null; if (occEv) linkedEv = null;
   const isComb = () => !!(edit && linkedEv && linkedEv.cal === 'solar');
   const st = edit
     ? { type: edit.type, date: edit.date, name: edit.name || '', cat: edit.cat, sub: edit.sub || '', kind: edit.kind || 'var', manual: true }
@@ -1325,6 +1370,7 @@ function openInput(opts = {}) {
     <div class="row"><input class="fld" id="iName" placeholder="가맹점·메모" autocomplete="off"></div>
     <div class="row"><button class="mini" data-i="dm">‹</button><input type="date" class="fld" id="iDate"><button class="mini" data-i="dp">›</button>
       <div class="seg" id="iKind"><button data-k="var">변동</button><button data-k="fix">고정</button></div></div>
+    ${occEv ? `<div class="linknote">${linkIc} 반복 일정의 한 회차 · ${esc(occEv.title)}</div>` : ''}
     ${linkedEv && linkedEv.cal !== 'solar' ? `<div class="linknote">${linkIc} 연결된 일정 · ${esc(linkedEv.title)}</div>` : ''}
     <div class="drop" id="iDrop"></div><div class="subs" id="iSubs"></div>
     <div class="iconwrap catwrap"><div class="iconbar" id="iBar"></div></div></div>
@@ -1382,7 +1428,7 @@ function openInput(opts = {}) {
     q('#iEv').classList.toggle('hide', st.mode !== 'both');
     q('#iTxHd').classList.toggle('hide', st.mode !== 'both');
     q('#iEvDel').classList.toggle('hide', !isComb()); q('#iTxDel').classList.toggle('hide', !isComb());
-    q('#iAddEv').classList.toggle('hide', !(edit && !linkedEv && st.mode !== 'both'));
+    q('#iAddEv').classList.toggle('hide', !(edit && !linkedEv && !occEv && st.mode !== 'both'));
     q('#iEvTypes').innerHTML = evTypeList().filter(t => t.id !== 'holiday').map(t => `<button class="icb ${st.evType === t.id ? 'on' : ''}" data-et="${t.id}" style="--c:${t.color}">${evIco(t, '34px')}<span class="n">${esc(t.name)}</span></button>`).join('');
     q('#iEvAdd').innerHTML = `<button class="icb add" data-newtype="1" aria-label="일정 종류 추가·수정"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">추가·수정</span></button>`;
     q('#iEvWrap').classList.toggle('hide', st.mode !== 'both');
@@ -1575,6 +1621,8 @@ function openEvent(opts = {}) {
   <div class="ph"><b>${ev ? '일정 수정' : ''}</b>${ev ? '' : `<div class="modes" id="eModes">${modesHTML('ev')}</div>`}<span class="sp"></span><button class="x" data-e="x">✕</button></div>
   <div class="pb">
     ${ev && ev.txId && db.tx.find(x => x.id === ev.txId) ? `<div class="linknote">${linkIc} 연결된 내역 · ${esc(db.tx.find(x => x.id === ev.txId).name || catById(db.tx.find(x => x.id === ev.txId).cat).name)} ${fmt(db.tx.find(x => x.id === ev.txId).amount)}원</div>` : ''}
+    <div class="evsec">
+    <div class="parthd ev"><span class="pk">D</span><b>일정</b>${ev ? '<button class="pdel" id="eDel" data-ed="del" aria-label="일정 삭제">✕</button>' : ''}</div>
     <div class="row"><input class="fld" id="eTitle" placeholder="제목 (예: 할아버지 기일, 휴무)" autocomplete="off"></div>
     <div class="row"><label>달력</label><div class="seg" id="eCal"><button data-c="solar">양력</button><button data-c="lunar">음력</button></div></div>
     <div class="row"><label>반복</label><div class="seg rep" id="eRep"></div></div>
@@ -1590,9 +1638,10 @@ function openEvent(opts = {}) {
     <div class="row hide" id="eWdRow"><label>요일</label><div class="wdays" id="eWd"></div></div>
     <div class="row hide" id="eUntilRow"><label>종료</label><input type="date" class="fld" id="eUntil"><button class="mini" data-r2="clr" aria-label="종료일 지우기">✕</button></div>
     <div class="hint hide" id="eUntilHint">종료일을 비우면 계속 반복돼요</div>
-    <div class="btns"><button class="btn dan ${ev ? '' : 'hide'}" id="eDel">삭제</button>${ev && ev.repeat !== 'none' && opts.occ ? `<button class="btn" id="eSkip">${opts.occ.slice(5).replace('-', '/')}만 건너뛰기</button>` : ''}<span class="sp"></span><button class="btn pri" id="eSave">저장</button></div>
-  </div>
-  <div class="iconwrap"><div class="iconbar" id="eBar"></div><div class="addwrap" id="eAdd"></div></div>`);
+    <div class="iconwrap evwrap" id="eIconWrap"><div class="iconbar" id="eBar"></div><div class="addwrap" id="eAdd"></div></div>
+    </div>
+    <div class="btns">${ev && ev.repeat !== 'none' && opts.occ ? `<button class="btn" id="eSkip">${opts.occ.slice(5).replace('-', '/')}만 건너뛰기</button>` : ''}<span class="sp"></span><button class="btn pri" id="eSave">저장</button></div>
+  </div>`);
   const q = s => $(s, m);
   q('#eTitle').value = st.title; q('#eDate').value = st.date || base; q('#eEnd').value = st.end || ''; q('#eUntil').value = st.until || '';
   q('#eLm').value = st.lm; q('#eLd').value = st.ld; q('#eLeap').checked = !!st.leap; q('#eLy').value = st.ly;
@@ -1687,9 +1736,8 @@ function openEvent(opts = {}) {
     else finish(false);
   };
   if (q('#eSkip')) q('#eSkip').onclick = () => { ev.skip = [...(ev.skip || []), opts.occ]; persist(); closeModal(m); renderAll(); toast(opts.occ.slice(5).replace('-', '/') + ' 하루만 건너뛰었어요', 1500); };
-  const del = q('#eDel'); let armed = 0;
-  del.onclick = () => {
-    if (!armed) { armed = 1; del.textContent = '한 번 더 눌러 삭제'; setTimeout(() => { armed = 0; del.textContent = '삭제'; }, 3000); return; }
+  const del = q('#eDel');
+  if (del) del.onclick = () => {
     const lt = ev.txId ? db.tx.find(x => x.id === ev.txId) : null;
     const doDel = withTx => {
       db.events = db.events.filter(x => x.id !== ev.id);
@@ -1698,7 +1746,7 @@ function openEvent(opts = {}) {
       if ($('#setPanel')) renderSettings && renderSettings();
     };
     if (lt) askLink(`연결된 내역(${lt.name || catById(lt.cat).name} ${fmt(lt.amount)}원)도 같이 지울까요?`, [{ k: 'both', label: '같이 삭제', cls: 'dan' }, { k: 'solo', label: '일정만 삭제' }], k => doDel(k === 'both'));
-    else doDel(false);
+    else askLink('이 일정을 삭제할까요?', [{ k: 'del', label: '삭제', cls: 'dan' }, { k: 'x', label: '취소' }], k => { if (k === 'del') doDel(false); });
   };
   if (!ev) setTimeout(() => q('#eTitle').focus(), 120);
 }
@@ -1707,8 +1755,19 @@ Object.assign(ACT, {
   fab(t) { const k = t && t.dataset.t; if (k === 'ev') openEvent({ date: defaultInputDate() }); else openInput({ type: k === 'in' ? 'in' : 'out' }); },
   tedit(t) {
     if (ST.multi) {
-      const id = t.dataset.id; if (ST.multi.has(id)) ST.multi.delete(id); else ST.multi.add(id);
+      const id = t.dataset.id; if (String(id).startsWith('p:')) return; if (ST.multi.has(id)) ST.multi.delete(id); else ST.multi.add(id);
       keepScroll(renderAll); return;
+    }
+    const id = String(t.dataset.id);
+    if (id.startsWith('p:')) {
+      const [, eid, d] = id.split(':'), ev = db.events.find(x => x.id === eid), base = ev && recurBase(ev); if (!base) return;
+      const md = shortMD(d);
+      askLink(`예정 · ${base.name || catById(base.cat).name} ${fmt(base.amount)}원 (${md}). 어떻게 할까요?`, [{ k: 'edit', label: `${md} 내용 수정`, cls: 'pri' }, { k: 'now', label: '지금 확정' }, { k: 'skip', label: `${md}는 건너뛰기` }], k => {
+        if (k === 'skip') { ev.pskip = [...(ev.pskip || []), d]; persist(); renderAll(); toast(md + ' 예정을 뺐어요', 1400); return; }
+        const nt = materializeTx(ev, base, d); persist(); renderAll();
+        if (k === 'edit') openInput({ tx: nt }); else toast(md + ' 예정을 확정했어요', 1400);
+      });
+      return;
     }
     const tx = db.tx.find(x => x.id === t.dataset.id); if (tx) openInput({ tx });
   },
@@ -1780,6 +1839,7 @@ function keepScroll(fn) {
   sc.forEach(([c, t]) => { const e = $('.' + c.split(' ').join('.')); if (e) e.scrollTop = t; });
 }
 function multiEnter(id) {
+  if (String(id).startsWith('p:')) { toast('예정 항목은 선택할 수 없어요'); return; }
   ST.multi = new Set([id]); if (navigator.vibrate) try { navigator.vibrate(30); } catch (e) { }
   keepScroll(renderAll);
 }
@@ -1859,7 +1919,7 @@ function openTotals() {
       }).join('');
     }
     const fx = {};
-    db.tx.forEach(t => { if (t.date >= from && t.date <= to && t.kind === 'fix' && t.type === 'out' && !isLoan(t) && (!tp.cat || t.cat === tp.cat) && (!tp.kw || (t.name || '').includes(tp.kw))) { const k = (t.name || catById(t.cat).name); (fx[k] = fx[k] || { n: 0, v: 0, cat: t.cat }); fx[k].n++; fx[k].v += t.amount; } });
+    db.tx.concat(plannedTx(from, to)).forEach(t => { if (t.date >= from && t.date <= to && t.kind === 'fix' && t.type === 'out' && !isLoan(t) && (!tp.cat || t.cat === tp.cat) && (!tp.kw || (t.name || '').includes(tp.kw))) { const k = (t.name || catById(t.cat).name); (fx[k] = fx[k] || { n: 0, v: 0, cat: t.cat }); fx[k].n++; fx[k].v += t.amount; } });
     const fxl = Object.entries(fx).sort((a, b) => b[1].v - a[1].v);
     if (fxl.length) h += `<div class="sec">고정 지출 내역</div>` + fxl.map(([k, x]) => `<div class="kv"><span>${icoHTML(catById(x.cat), '20px')} ${esc(k)} <small style="color:var(--sub)">${x.n}회</small></span><span class="num out">${fmt(x.v)}</span></div>`).join('');
     const lb = loanBalances();
