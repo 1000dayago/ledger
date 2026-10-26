@@ -549,6 +549,13 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 .lk-pat .pl{fill:none;stroke:var(--acc);stroke-width:7;stroke-linecap:round;stroke-linejoin:round;opacity:.55;pointer-events:none}
 .lk-pat.shake{animation:shk .3s}
 .lk-bot{display:flex;gap:10px;justify-content:center}
+
+/* v2.11 월·주 통계 */
+.brow{background:var(--soft);border-radius:12px;padding:8px 12px;margin:6px 0}
+.brow .bh{display:flex;justify-content:space-between;align-items:baseline;font-size:13px}.brow .bh small{color:var(--sub);font-size:11px}
+.brow .bl{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:13px}.brow .bl .bw{flex:1;min-width:0;height:8px;background:color-mix(in srgb,var(--sub) 14%,transparent);border-radius:4px;overflow:hidden}
+.brow .bar2{display:block;height:8px;border-radius:4px;opacity:1}.brow .bar2.o{background:var(--out,#3b6fd8)}.brow .bar2.i{background:var(--in,#d9534f)}
+.brow .bl .num{width:92px;text-align:right;flex:none;font-weight:700}
 </style>
 </head>
 <body>
@@ -559,7 +566,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.10.0';
+const APP_VERSION = '2.11.0';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -928,7 +935,7 @@ function eventsByDate(from, to) {
   if (S().showHoliday) {
     for (let y = parse(from)[0]; y <= parse(to)[0]; y++) holidaysOf(y).forEach((n, d) => { if (d >= from && d <= to) add(d, { title: n, type: 'holiday', builtin: true }); });
   }
-  db.events.forEach(ev => {
+  if (layOn('ev')) db.events.forEach(ev => {
     eventStarts(ev, from, to).forEach(({ s, span }) => {
       for (let i = 0; i <= span; i++) { const d = addDays(s, i); if (d >= from && d <= to) add(d, ev); }
     });
@@ -937,6 +944,10 @@ function eventsByDate(from, to) {
 }
 
 /* ---------- 거래 집계 ---------- */
+const layOn = k => !S().lay || S().lay[k] !== false;
+const layOK = t => t.type === 'out' ? layOn('out') : layOn('in');
+const layLabel = () => [['ev', '일정'], ['in', '수입'], ['out', '지출']].filter(([k]) => layOn(k)).map(x => x[1]).join('·');
+const layAll = () => layOn('ev') && layOn('in') && layOn('out');
 const fixMatch = t => { const f = S().fixView; return f === 'all' || (f === 'fix' ? t.kind === 'fix' : t.kind !== 'fix'); };
 /* ---------- 받을 돈 (대여 잔액 + 정기적으로 쌓이는 미수금) ---------- */
 function recvDates(r, upto) {
@@ -1039,8 +1050,8 @@ function materializeDue() {
 }
 function txByDate(from, to, raw) {
   const map = new Map();
-  db.tx.forEach(t => { if (t.date >= from && t.date <= to && (raw || fixMatch(t))) { if (!map.has(t.date)) map.set(t.date, []); map.get(t.date).push(t); } });
-  plannedTx(from, to).forEach(t => { if (raw || fixMatch(t)) { if (!map.has(t.date)) map.set(t.date, []); map.get(t.date).push(t); } });
+  db.tx.forEach(t => { if (t.date >= from && t.date <= to && (raw || (fixMatch(t) && layOK(t)))) { if (!map.has(t.date)) map.set(t.date, []); map.get(t.date).push(t); } });
+  plannedTx(from, to).forEach(t => { if (raw || (fixMatch(t) && layOK(t))) { if (!map.has(t.date)) map.set(t.date, []); map.get(t.date).push(t); } });
   map.forEach(a => a.sort((x, y) => (x.order || 0) - (y.order || 0)));
   return map;
 }
@@ -1058,6 +1069,7 @@ function summarize(from, to, f = {}) {
   db.tx.concat(plannedTx(from, to)).forEach(t => {
     if (t.date < from || t.date > to || uncounted(t)) return;
     if (f.cat && t.cat !== f.cat) return;
+    if (f.type && t.type !== f.type) return;
     if (f.kind && !(f.kind === 'fix' ? t.kind === 'fix' : t.kind !== 'fix')) return;
     if (f.kw && !(`${t.name || ''} ${t.sub || ''} ${catById(t.cat).name}`).toLowerCase().includes(f.kw.toLowerCase())) return;
     r.n++;
@@ -1075,6 +1087,22 @@ function summarize(from, to, f = {}) {
   r.days = Math.max(1, daysBetween(from, end < from ? from : end) + 1);
   Object.keys(day).forEach(d => { if (!r.maxDay || day[d] > r.maxDay.v) r.maxDay = { d, v: day[d] }; });
   return r;
+}
+/* 검색 조건에 맞는 내역을 월(가계월)·주 단위로 묶어 집계 */
+function bucketStats(from, to, unit, f = {}) {
+  const rows = new Map(), kw = (f.kw || '').toLowerCase();
+  db.tx.concat(plannedTx(from, to)).forEach(t => {
+    if (t.date < from || t.date > to || uncounted(t)) return;
+    if (f.cat && t.cat !== f.cat) return;
+    if (f.type && t.type !== f.type) return;
+    if (kw && !(`${t.name || ''} ${t.sub || ''} ${catById(t.cat).name}`).toLowerCase().includes(kw)) return;
+    let key, start, end, label;
+    if (unit === 'week') { start = addDays(t.date, -dow(t.date)); end = addDays(start, 6); key = start; label = `${shortMD(start)} ~ ${shortMD(end)}`; }
+    else { const k = keyOf(t.date), p = periodOf(k.y, k.m); key = p.start; start = p.start; end = p.end; label = k.y + '년 ' + k.m + '월'; }
+    let r = rows.get(key); if (!r) rows.set(key, r = { key, start, end, label, in: 0, out: 0, n: 0 });
+    r.n++; if (t.type === 'out') r.out += t.amount; else r.in += t.amount;
+  });
+  return [...rows.values()].sort((a, b) => a.key < b.key ? -1 : 1);
 }
 function limitInfo(p) {
   const mode = S().limitMode;
@@ -1185,7 +1213,7 @@ function renderTop() {
   <div class="bar">
     <div class="seg">${[['out', '지출'], ['both', '수입·지출'], ['bal', '누적']].map(([v, n]) => `<button data-a="mode" data-v="${v}" class="${m === v ? 'on' : ''}">${n}</button>`).join('')}</div>
     <span class="sp"></span>
-    <button class="chip-btn ${fv !== 'all' ? 'on' : ''}" data-a="opts">보기${fv === 'all' ? '' : ' · ' + (fv === 'fix' ? '고정' : '변동')} ▾</button>
+    <button class="chip-btn ${fv !== 'all' || !layAll() ? 'on' : ''}" data-a="opts">보기${fv === 'all' ? '' : ' · ' + (fv === 'fix' ? '고정' : '변동')}${layAll() ? '' : ' · ' + layLabel() + '만'} ▾</button>
   </div>
   ${bannersHTML()}`;
   $('#dockView').innerHTML = [['month', '월'], ['week', '주'], ['day', '일']].map(([v, n]) => `<button data-a="view" data-v="${v}" class="${ST.view === v ? 'on' : ''}">${n}</button>`).join('');
@@ -1222,7 +1250,7 @@ function amountHTML(tot, mode, cum, showCum) {
   return `<div class="am num ${cum < 0 ? 'out' : 'in'}">${cum < 0 ? '-' : ''}${compact(cum)}</div>`;
 }
 /* 같이 저장한 일정+내역은 한 덩어리로 보이게: 같은 날이면 내역 카드에 일정을 붙이고 일정 줄은 숨김 */
-const comboEv = (t, d) => { const e = t.evId && db.events.find(x => x.id === t.evId); if (!e) return null; if (e.repeat && e.repeat !== 'none') return t.date === d ? e : null; return e.date === d && t.date === d ? e : null; };
+const comboEv = (t, d) => { if (!layOn('ev')) return null; const e = t.evId && db.events.find(x => x.id === t.evId); if (!e) return null; if (e.repeat && e.repeat !== 'none') return t.date === d ? e : null; return e.date === d && t.date === d ? e : null; };
 const isMerged = (e, list) => !!list.some(t => (t.id === e.txId || t.evId === e.id) && comboEv(t, t.date));
 const evTag = e => `<span class="evt" style="--c:${evType(e.type).color}">${evIco(evType(e.type), '16px')}${esc(e.title)}</span>`;
 function iconsRow(list) {
@@ -2035,7 +2063,7 @@ Object.assign(ACT, {
 
 /* ---------- 기간 합계 ---------- */
 function openTotals() {
-  const tp = { mode: 'cur', from: '', to: '', cat: '', kw: '' };
+  const tp = { mode: 'cur', from: '', to: '', cat: '', kw: '', type: '', unit: 'sum' };
   const m = openModal(`
   <div class="ph"><b>기간 합계</b><span class="sp"></span><button class="x" data-t="x">✕</button></div>
   <div class="pb">
@@ -2043,6 +2071,7 @@ function openTotals() {
     <div class="row hide" id="tCus"><input type="date" class="fld" id="tFrom"><span>~</span><input type="date" class="fld" id="tTo"></div>
     <div class="row"><select class="fld" id="tCat" style="flex:none;width:44%"><option value="">모든 분류</option>${db.cats.map(c => `<option value="${c.id}">${c.icon} ${esc(c.loan ? '대여/회수' : c.name)}</option>`).join('')}</select>
       <input class="fld" id="tKw" placeholder="가맹점·메모 검색" autocomplete="off"></div>
+    <div class="row"><div class="seg" id="tType"></div><span class="sp"></span><div class="seg" id="tUnit"></div></div>
     <div id="tRes"></div>
   </div>`, 'full');
   const q = s => $(s, m);
@@ -2059,7 +2088,10 @@ function openTotals() {
     q('#tPre').innerHTML = pre.map(([k, n]) => `<button class="chip ${tp.mode === k ? 'on' : ''}" data-m="${k}">${n}</button>`).join('');
     q('#tCus').classList.toggle('hide', tp.mode !== 'custom');
     let [from, to] = range(); if (from > to) [from, to] = [to, from];
-    const r = summarize(from, to, { cat: tp.cat, kw: tp.kw });
+    q('#tType').innerHTML = [['', '전체'], ['out', '지출'], ['in', '수입']].map(([k, n]) => `<button data-ty="${k}" class="${tp.type === k ? 'on' : ''}">${n}</button>`).join('');
+    q('#tUnit').innerHTML = [['sum', '요약'], ['month', '월별'], ['week', '주별']].map(([k, n]) => `<button data-un="${k}" class="${tp.unit === k ? 'on' : ''}">${n}</button>`).join('');
+    const r = summarize(from, to, { cat: tp.cat, kw: tp.kw, type: tp.type });
+    if (tp.unit !== 'sum') { q('#tRes').innerHTML = bucketHTML(from, to, r); return; }
     const avg = r.out / r.days, max = r.maxDay;
     let h = `<div class="hint" style="margin:6px 0 0">${from} ~ ${to}</div>
     <div class="cards num"><div><small>수입</small><b class="in">${fmt(r.in)}</b></div><div><small>지출</small><b class="out">${fmt(r.out)}</b></div><div><small>잔액</small><b>${fmt(r.in - r.out)}</b></div></div>
@@ -2084,8 +2116,25 @@ function openTotals() {
     }
     q('#tRes').innerHTML = h;
   }
+  function bucketHTML(from, to, r) {
+    const rows = bucketStats(from, to, tp.unit, { cat: tp.cat, kw: tp.kw, type: tp.type });
+    const what = [tp.kw ? `“${esc(tp.kw)}”` : '', tp.cat ? esc(catById(tp.cat).loan ? '대여/회수' : catById(tp.cat).name) : '', tp.type === 'out' ? '지출' : tp.type === 'in' ? '수입' : ''].filter(Boolean).join(' · ') || '전체';
+    let h = `<div class="hint" style="margin:6px 0 0">${from} ~ ${to} · ${what}</div>
+    <div class="cards num"><div><small>수입</small><b class="in">${fmt(r.in)}</b></div><div><small>지출</small><b class="out">${fmt(r.out)}</b></div><div><small>${tp.unit === 'week' ? '주' : '월'} 평균 지출</small><b>${fmt(rows.length ? Math.round(r.out / rows.length) : 0)}</b></div></div>`;
+    if (!rows.length) return h + '<div class="empty">조건에 맞는 내역이 없어요</div>';
+    const mx = Math.max(1, ...rows.map(x => Math.max(x.in, x.out)));
+    h += `<div class="sec">${tp.unit === 'week' ? '주별' : '월별'} 통계</div>` + rows.map(x => `<div class="brow"><div class="bh"><b>${x.label}</b><small>${x.n}건</small></div>
+      ${tp.type !== 'in' ? `<div class="bl"><span class="bw"><i class="bar2 o" style="width:${Math.max(x.out ? 2 : 0, x.out / mx * 100)}%"></i></span><span class="num out">${x.out ? '-' + fmt(x.out) : '0'}</span></div>` : ''}
+      ${tp.type !== 'out' ? `<div class="bl"><span class="bw"><i class="bar2 i" style="width:${Math.max(x.in ? 2 : 0, x.in / mx * 100)}%"></i></span><span class="num in">${x.in ? '+' + fmt(x.in) : '0'}</span></div>` : ''}</div>`).join('');
+    const list = db.tx.concat(plannedTx(from, to)).filter(t => t.date >= from && t.date <= to && !uncounted(t) && (!tp.cat || t.cat === tp.cat) && (!tp.type || t.type === tp.type) && (!tp.kw || `${t.name || ''} ${t.sub || ''} ${catById(t.cat).name}`.toLowerCase().includes(tp.kw.toLowerCase()))).sort((a, b) => a.date < b.date ? 1 : -1);
+    if (tp.kw || tp.cat) h += `<div class="sec">검색된 내역 ${list.length}건</div>` + list.slice(0, 60).map(t => `<div class="kv" ${t.planned ? '' : `data-a="tedit" data-id="${t.id}"`}><span>${icoHTML(catById(t.cat), '20px')} ${esc(t.name || catById(t.cat).name)} <small style="color:var(--sub)">${shortMD(t.date)}${t.planned ? ' · 예정' : ''}</small></span><span class="num ${t.type === 'out' ? 'out' : 'in'}">${t.type === 'out' ? '-' : '+'}${fmt(t.amount)}</span></div>`).join('') + (list.length > 60 ? `<div class="hint">최근 60건만 보여요</div>` : '');
+    return h;
+  }
+  (window.__repaint = window.__repaint || []).push(() => { if (m.isConnected) paint(); });
   m.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.ty !== undefined) { tp.type = b.dataset.ty; paint(); return; }
+    if (b.dataset.un) { tp.unit = b.dataset.un; paint(); return; }
     if (b.dataset.t === 'x') closeModal(m);
     else if (b.dataset.m) { tp.mode = b.dataset.m; if (tp.mode === 'custom' && !tp.from) { const p = periodOf(ST.key.y, ST.key.m); tp.from = p.start; tp.to = p.end; q('#tFrom').value = tp.from; q('#tTo').value = tp.to; } paint(); }
   });
@@ -2107,6 +2156,8 @@ function openOpts() {
     <div class="pb">
       <div class="row"><label style="width:80px">표시 내역</label><div class="seg">${[['all', '전체'], ['fix', '고정'], ['var', '변동']].map(([v, n]) => `<button data-o="fix" data-v="${v}" class="${f === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
       <div class="hint">고정만 보면 달력과 위쪽 합계가 고정 지출·수입만 보여줘요.</div>
+      <div class="row"><label style="width:80px">달력에 표시</label><div class="chips" style="margin:0">${[['ev', '일정'], ['in', '수입'], ['out', '지출']].map(([k, n]) => `<button class="chip ${layOn(k) ? 'on' : ''}" data-o="lay" data-v="${k}">${layOn(k) ? '✓ ' : ''}${n}</button>`).join('')}</div></div>
+      <div class="hint">체크한 것만 달력에 보여요. 위쪽 합계는 그대로예요.</div>
       <div class="list-item"><div class="m">지출 히트맵<small>지출이 큰 날일수록 칸을 진하게</small></div>${sw(S().heat, 'heat')}</div>
       <div class="list-item"><div class="m">하루 기준 초과 표시<small>${L ? `하루 ${fmt(L.limit)}원 · 초과 ${L.over.size}일` : '수입을 입력하면 계산돼요'}</small></div>${sw(S().showLimit !== false, 'lim')}</div>
       <div class="btns"><button class="btn pri" data-o="x">완료</button></div>
@@ -2116,7 +2167,8 @@ function openOpts() {
     const b = e.target.closest('[data-o]'); if (!b) return;
     const v = b.dataset.o;
     if (v === 'x') { closeModal(m); return; }
-    if (v === 'fix') S().fixView = b.dataset.v;
+    if (v === 'lay') { S().lay = Object.assign({ ev: true, in: true, out: true }, S().lay); S().lay[b.dataset.v] = !S().lay[b.dataset.v]; }
+    else if (v === 'fix') S().fixView = b.dataset.v;
     else if (v === 'heat') S().heat = !S().heat;
     else if (v === 'lim') S().showLimit = S().showLimit === false;
     persist(); paint(); renderAll();
