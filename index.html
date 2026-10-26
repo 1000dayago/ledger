@@ -501,7 +501,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.4.1';
+const APP_VERSION = '2.4.2';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -1333,7 +1333,9 @@ function openInput(opts = {}) {
       <div class="parthd ev"><span class="pk">D</span><b>일정</b><button class="pdel hide" id="iEvDel" data-part="delev" aria-label="일정 부분 삭제">✕</button></div>
       <div class="row"><input class="fld" id="iEvT" placeholder="일정 제목 (비우면 가맹점·메모)" autocomplete="off"></div>
       <div class="row"><label class="chk" style="width:auto"><input type="checkbox" id="iEvSame" checked> 내역과 같은 날</label><input type="date" class="fld hide" id="iEvD"></div>
-      <div class="row"><label>반복</label><select class="fld" id="iEvRep" style="flex:none;width:auto"><option value="none">안 함</option><option value="daily">매일</option><option value="weekly">매주</option><option value="monthly">매월</option><option value="yearly">매년</option></select><input type="date" class="fld hide" id="iEvUn" title="종료일(비우면 계속)"></div>
+      <div class="row"><label style="min-width:34px">반복</label><div class="seg rep" id="iEvRepSeg"><button type="button" data-rp="none">안 함</button><button type="button" data-rp="daily">매일</button><button type="button" data-rp="weekly">매주</button><button type="button" data-rp="monthly">매월</button><button type="button" data-rp="yearly">매년</button></div><input type="hidden" id="iEvRep" value="none"></div>
+      <div class="hint hide" id="iEvHint" style="margin:-2px 0 6px;color:var(--acc);font-weight:700"></div>
+      <div class="row hide" id="iEvUnRow"><label style="min-width:34px">종료</label><input type="date" class="fld" id="iEvUn"><button class="mini" type="button" data-rp="clr" aria-label="종료일 지우기">✕</button></div>
       <div class="iconwrap evwrap" id="iEvWrap"><div class="iconbar" id="iEvTypes"></div><div class="addwrap" id="iEvAdd"></div></div>
     </div>
     <div class="btns"><button class="btn dan ${edit ? '' : 'hide'}" id="iDel">${isComb() ? '전체 삭제' : '삭제'}</button>
@@ -1386,7 +1388,15 @@ function openInput(opts = {}) {
     q('#iEvD').classList.toggle('hide', st.evSame);
   }
   if (linkedEv) { q('#iEvRep').value = linkedEv.repeat || 'none'; q('#iEvUn').value = linkedEv.until || ''; }
-  const repUi = () => q('#iEvUn').classList.toggle('hide', q('#iEvRep').value === 'none'); q('#iEvRep').onchange = repUi; repUi();
+  const repUi = () => {
+    const r = q('#iEvRep').value, d = (st.evSame ? q('#iDate').value : q('#iEvD').value) || st.date;
+    $$('#iEvRepSeg button', m).forEach(b => b.classList.toggle('on', b.dataset.rp === r));
+    q('#iEvUnRow').classList.toggle('hide', r === 'none');
+    const h = q('#iEvHint'); h.classList.toggle('hide', r === 'none');
+    if (r !== 'none' && d) { const [, mm, dd] = parse(d); h.textContent = '↻ ' + { daily: `${mm}/${dd}부터 매일`, weekly: `${mm}/${dd}부터 매주 ${DOW_KO[dow(d)]}요일`, monthly: `${mm}/${dd}부터 매월 ${+dd}일`, yearly: `매년 ${+mm}월 ${+dd}일` }[r] + ' · 종료일을 비우면 계속'; }
+  };
+  m.addEventListener('click', e => { const b = e.target.closest('[data-rp]'); if (b) { if (b.dataset.rp === 'clr') q('#iEvUn').value = ''; else q('#iEvRep').value = b.dataset.rp; } setTimeout(repUi, 0); });
+  m.addEventListener('input', () => setTimeout(repUi, 0)); repUi();
   paintType(); paintKind(); paintMode();
   q('#iEvSame').onchange = e => { st.evSame = e.target.checked; if (!st.evSame && !q('#iEvD').value) q('#iEvD').value = q('#iDate').value || st.date; paintMode(); };
 
