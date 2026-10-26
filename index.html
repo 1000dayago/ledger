@@ -501,7 +501,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.4.2';
+const APP_VERSION = '2.4.3';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -1663,7 +1663,21 @@ function openEvent(opts = {}) {
       renderAll(); if (ST.view !== 'day') ensureVisible(); toast('저장했어요', 1200);
       if ($('#setPanel')) renderSettings && renderSettings();
     };
-    if (linkedTx && st.cal === 'solar' && ev.cal === 'solar' && o.date !== ev.date)
+    if (ev && opts.occ && ev.repeat && ev.repeat !== 'none' && ev.cal === 'solar' && st.cal === 'solar' && !linkedTx) {
+      const md = opts.occ.slice(5).replace('-', '/'), same = o.date === ev.date, nd = same ? opts.occ : o.date;
+      const doScope = k => {
+        if (k === 'all') { finish(false); return; }
+        const copy = { id: newId('e'), ...o, date: nd }; delete copy.skip;
+        if (k === 'one') { ev.skip = [...(ev.skip || []), opts.occ]; Object.assign(copy, { repeat: 'none', until: '', wd: [], end: o.end || '' }); }
+        else { /* 이후 모두 */
+          if (opts.occ <= ev.date) { finish(false); return; }
+          ev.until = addDays(opts.occ, -1);
+          if (ev.skip) { copy.skip = ev.skip.filter(x => x >= opts.occ); ev.skip = ev.skip.filter(x => x < opts.occ); }
+        }
+        db.events.push(copy); persist(); closeModal(m); revealDate(nd); renderAll(); toast(k === 'one' ? md + ' 하루만 고쳤어요' : md + '부터 모두 고쳤어요', 1500);
+      };
+      askLink('반복 일정이에요. 어디까지 고칠까요?', [{ k: 'one', label: `${md} 하루만` }, { k: 'after', label: `${md}부터 이후 모두` }, { k: 'all', label: '전체 반복', cls: 'pri' }], doScope);
+    } else if (linkedTx && st.cal === 'solar' && ev.cal === 'solar' && o.date !== ev.date)
       askLink(`일정 날짜를 바꿨어요. 연결된 내역(${linkedTx.name || catById(linkedTx.cat).name})도 같이 옮길까요?`, [{ k: 'both', label: '같이 옮기기', cls: 'pri' }, { k: 'solo', label: '일정만' }], k => finish(k === 'both'));
     else finish(false);
   };
