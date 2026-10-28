@@ -567,6 +567,21 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 
 /* v2.13 드라이브 */
 .dvsteps{margin:4px 0 6px;padding-left:20px;font-size:13px;line-height:1.6;color:var(--sub)}.dvsteps b{color:var(--ink)}
+
+/* 카드·문자 알림 확인 대기함 */
+.nt{border:1px solid var(--line);border-radius:12px;padding:10px;margin:8px 0;background:var(--card)}
+.nt .nth{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:12px;color:var(--sub)}
+.nt .row{margin:6px 0}
+.nt .btns{margin-top:8px}
+.nt .ntt{font-weight:600;margin:2px 0}
+.nt .ntr{font-size:12px;color:var(--sub);white-space:pre-wrap;word-break:break-all;margin-top:4px}
+.nt details{margin-top:6px;font-size:12px;color:var(--sub)}
+.nt summary{cursor:pointer}
+.ntg{padding:1px 7px;border-radius:6px;font-weight:700;font-size:11px;background:var(--soft);color:var(--sub)}
+.ntg.out{color:var(--out)}.ntg.in{color:var(--in)}.ntg.cn{color:var(--warn)}
+.nt.warnbox{border-color:var(--warn)}
+.hint.warn{color:var(--warn)}
+.kv .btn{padding:5px 10px;font-size:12px}
 </style>
 </head>
 <body>
@@ -577,7 +592,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.14.0';
+const APP_VERSION = '2.15.0';
 const PAGES_URL = 'https://1000dayago.github.io/ledger/index.html';
 const isApk = () => { try { return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); } catch (e) { return false; } };
 const nativePlug = n => { try { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins[n]) || null; } catch (e) { return null; } };
@@ -655,7 +670,7 @@ function evIco(t, size) {
 /* ---------- 저장소 ---------- */
 let db = null;
 function freshDB() {
-  return { v: 1, settings: { ...DEFAULT_SETTINGS }, cats: JSON.parse(JSON.stringify(DEFAULT_CATS)), tx: [], events: [], evTypes: [], evOver: {}, recv: [], rules: {}, lastBackup: null, nextId: 1 };
+  return { v: 1, settings: { ...DEFAULT_SETTINGS }, cats: JSON.parse(JSON.stringify(DEFAULT_CATS)), tx: [], events: [], evTypes: [], evOver: {}, recv: [], rules: {}, noti: { pend: [], seen: {}, cum: {} }, lastBackup: null, nextId: 1 };
 }
 function loadDB() {
   let raw = null;
@@ -688,6 +703,7 @@ function adopt(o) {
   if (Array.isArray(o.recv)) d.recv = o.recv.filter(r => r && r.id);
   if (Array.isArray(o.evTypes)) d.evTypes = o.evTypes.filter(t => t && t.id && t.name);
   if (o.rules && typeof o.rules === 'object') d.rules = o.rules;
+  if (o.noti && typeof o.noti === 'object') d.noti = { pend: Array.isArray(o.noti.pend) ? o.noti.pend.filter(x => x && x.id) : [], seen: o.noti.seen && typeof o.noti.seen === 'object' ? o.noti.seen : {}, cum: o.noti.cum && typeof o.noti.cum === 'object' ? o.noti.cum : {} };
   d.lastBackup = o.lastBackup || null;
   let max = 0;
   [...d.tx, ...d.events].forEach(x => { const n = parseInt(String(x.id).replace(/\D/g, ''), 10); if (n > max) max = n; });
@@ -1252,6 +1268,7 @@ function bannersHTML() {
     const age = db.lastBackup ? daysBetween(db.lastBackup, t) : 999;
     if (age > 30) h += `<div class="banner"><span>${db.lastBackup ? `백업한 지 ${age}일 지났어요` : '아직 백업한 적이 없어요'}</span><button class="go" data-a="backup">백업</button><button data-a="ban" data-k="bk">✕</button></div>`;
   }
+  if (isApk() && notiCount()) h += `<div class="banner"><span>확인할 카드·문자 알림 ${notiCount()}건</span><button class="go" data-a="noti">확인</button></div>`;
   return h;
 }
 
@@ -2219,6 +2236,7 @@ function openSettings() {
     else if (v === 'autobk') { S().autoBk = b.dataset.v; persist(); renderSettings(); }
     else if (v === 'safelist') openSafeList();
     else if (v === 'drive') openDrive();
+    else if (v === 'noti') openNoti();
     else if (v === 'pin') pinToggle();
     else if (v === 'pinchg') pinChange();
     else if (v === 'pinafter') pinAfter(b.dataset.v);
@@ -2271,6 +2289,7 @@ function renderSettings() {
     <div class="list-item"><div class="m">앱 잠금${pinOn() ? ` (${lockMode(pinCfg()) === 'pat' ? '패턴' : '6자리'})` : ''}<small>${pinOn() && lockMode(pinCfg()) === 'pat' ? '앱을 열 때 패턴을 그리면 바로 열려요' : '숫자 6개 또는 패턴으로 앱을 잠가요'}</small></div>${sw(pinOn(), 'pin')}</div>
     ${pinOn() ? `<div class="row"><label style="width:80px">잠금 시점</label><div class="seg">${[[0, '나가면 즉시'], [60, '1분 뒤'], [300, '5분 뒤']].map(([v, n]) => `<button data-s="pinafter" data-v="${v}" class="${(pinCfg().after || 0) === v ? 'on' : ''}">${n}</button>`).join('')}</div><span class="sp"></span><button class="btn" data-s="pinchg">방식·암호 변경</button></div>` : ''}
     <div class="kv"><span>내역 ${db.tx.length}건</span><span>마지막 백업 ${db.lastBackup || '없음'}</span></div>
+    ${isApk() ? `<div class="list-item" data-s="noti" style="cursor:pointer"><div class="m">카드·문자 알림 가져오기<small id="notiLine">${esc(notiLine())}</small></div><button class="btn" data-s="noti">${notiCount() ? '확인' : '열기'}</button></div>` : ''}
     <div class="list-item" data-s="drive" style="cursor:pointer"><div class="m">구글 드라이브 백업<small id="drvLine">${esc(drvLine())}</small></div><button class="btn" data-s="drive">${drvOn() ? '관리' : '연결'}</button></div>
     <div class="row"><label style="width:80px">자동 백업</label><div class="seg">${[['off', '끔'], ['day', '매일'], ['week', '주 1회'], ['month', '월 1회']].map(([v, n]) => `<button data-s="autobk" data-v="${v}" class="${(S().autoBk || 'week') === v ? 'on' : ''}">${n}</button>`).join('')}</div><span class="sp"></span><button class="btn" data-s="safelist">자동 보관본</button></div>
     <div class="hint" style="margin:0 0 6px">저장할 때마다 폰 안에 복사본을 두고, 정해진 주기가 지났고 바뀐 내용이 있으면 앱을 열 때 백업 파일을 다운로드 폴더에 저장해요.</div>
@@ -3042,6 +3061,328 @@ async function drvBoot() {
   } catch (e) { }
   if (drvOn() && dbMeaningful(db) && drvCfg().sig !== dataSig()) drvSoon();
 }
+/* ===== 달력 가계부 · 카드·문자 알림 가져오기 (APK 앱 전용) =====
+   안드로이드가 알림을 읽어 두면(NotiService) 앱이 열릴 때마다 가져와서
+   '확인 대기함'에 쌓고, 사용자가 확인해야만 내역으로 등록돼요. */
+const notiPlug = () => (isApk() ? nativePlug('Noti') : null);
+function notiDB() {
+  if (!db.noti || typeof db.noti !== 'object') db.noti = { pend: [], seen: {}, cum: {} };
+  const n = db.noti;
+  if (!Array.isArray(n.pend)) n.pend = [];
+  if (!n.seen || typeof n.seen !== 'object') n.seen = {};
+  if (!n.cum || typeof n.cum !== 'object') n.cum = {};
+  return n;
+}
+const notiCount = () => (db.noti && Array.isArray(db.noti.pend)) ? db.noti.pend.length : 0;
+const notiHash = s => { s = String(s); let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + s.length; };
+
+/* ---------- 알림 문구 해석 ---------- */
+const NOTI_WORD = /^(일시불|할부\d*개월?|해외승인|해외|승인취소|결제취소|취소승인|승인|취소|체크카드|신용카드|결제|출금|입금|누적금액|누적|알림톡|도착|고객님|님|사용|이용|완료|안내|카드)$/;
+function notiClean(s) {
+  s = String(s || '')
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/[0-9][0-9,]*\s*원/g, ' ')
+    .replace(/\(\d+건\)/g, ' ')
+    .replace(/[가-힣]\*[가-힣*]{0,2}(?=\s|$|님)/g, ' ')
+    .replace(/[가-힣A-Za-z0-9]{2,12}\s?\([0-9*]{2,8}\)/g, ' ')
+    .replace(/(?:20\d{2}[-.\/])?\d{1,2}[\/.]\d{1,2}(?!\d)/g, ' ')
+    .replace(/\d{1,2}월\s*\d{1,2}일(\([월화수목금토일]\))?/g, ' ')
+    .replace(/\d{1,2}:\d{2}/g, ' ')
+    .replace(/[,:：|·•▶▷►◆■●※]+/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+  s = s.split(' ').filter(t => t && !NOTI_WORD.test(t)).join(' ');
+  s = s.replace(/^(\(주\)|㈜)\s*/, '').trim();
+  return s.length > 40 ? s.slice(0, 40).trim() : s;
+}
+function notiParse(title, text, t) {
+  const ttl = String(title || '').trim();
+  const raw = String(text || '').replace(/\r/g, '').trim();
+  if (!raw) return null;
+  if (/\(광고\)|\[광고\]/.test(raw) || /^\(?광고\)?/.test(ttl)) return null;
+  const lines = raw.split('\n').map(x => x.trim()).filter(Boolean);
+  const flat = lines.join(' ').replace(/\s+/g, ' ');
+  const all = ttl + ' ' + flat;
+
+  /* 종류: 취소 → 환급·할인 → 승인/출금 → 입금 */
+  let kind = null;
+  if (/취소/.test(all) && !/취소\s*(가능|방법|하시|하려|문의|수수료)/.test(all)) kind = 'cancel';
+  else if (/환급|환불|캐시백|할인금액/.test(all)) kind = 'refund';
+  else if (/결제\s*(예정|일|계좌|대금)|청구|명세서|이벤트|혜택|쿠폰|포인트\s*소멸/.test(all)) kind = null;
+  else if (/입금/.test(all) && !/승인|출금|결제/.test(all)) kind = 'in';
+  else if (/승인|출금|결제|사용|이용|일시불|할부|체크/.test(all)) kind = 'appr';
+  if (!kind) return null;
+
+  /* 금액: 누적·잔액·한도 앞의 숫자는 건너뜀 */
+  const ams = []; let m; const re = /([0-9][0-9,]*)\s*원/g;
+  while ((m = re.exec(flat))) {
+    const pre = flat.slice(Math.max(0, m.index - 9), m.index);
+    ams.push({ v: parseInt(m[1].replace(/,/g, ''), 10), i: m.index, e: m.index + m[0].length, pre, skip: /누적|잔액|잔고|한도|합계|총액|잔여|포인트/.test(pre) });
+  }
+  let am = null;
+  if (kind === 'refund') am = ams.find(a => !a.skip && /할인금액|환급금액|환급금|환불금액|입금액|캐시백|적립/.test(a.pre)) || ams.find(a => !a.skip);
+  else am = ams.find(a => !a.skip);
+  if (!am || !(am.v > 0)) return null;
+
+  /* 카드·발행사 */
+  let card = '';
+  const cm = flat.match(/([가-힣A-Za-z0-9]{2,12})\s?\(([0-9*]{2,8})\)/);
+  if (cm) card = cm[1] + '(' + cm[2] + ')';
+  const im = ttl.match(/[가-힣A-Za-z0-9]*(카드|뱅크|은행|페이)/) || flat.match(/[가-힣]{2,6}(카드|은행)/);
+  const issuer = im ? im[0] : '';
+  const cu = flat.match(/누적(?:금액)?\s*[:：]?\s*([0-9][0-9,]*)\s*원/);
+  const cum = cu ? parseInt(cu[1].replace(/,/g, ''), 10) : null;
+  const im2 = flat.match(/일시불|할부\s*\d+\s*개월/);
+  const inst = im2 ? im2[0].replace(/\s+/g, '') : '';
+
+  /* 날짜·시간: 문구 안의 날짜를 우선 (알림이 늦게 와도 사용한 날로) */
+  const d0 = new Date(+t || Date.now());
+  const pd = ymd(d0.getFullYear(), d0.getMonth() + 1, d0.getDate());
+  const inx = kind === 'refund' || kind === 'in';
+  const guess = (mm, dd) => {
+    if (!(mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31)) return null;
+    const y = parse(pd)[0]; let c = ymd(y, mm, dd);
+    if (inx) { if (daysBetween(c, pd) > 300) c = ymd(y + 1, mm, dd); }
+    else if (c > addDays(pd, 1)) c = ymd(y - 1, mm, dd);
+    return c;
+  };
+  let date = null, dm = flat.match(/(?:^|[^\d])(20\d{2})[-.\/](\d{1,2})[-.\/](\d{1,2})(?!\d)/);
+  if (dm && +dm[2] >= 1 && +dm[2] <= 12 && +dm[3] >= 1 && +dm[3] <= 31) date = ymd(+dm[1], +dm[2], +dm[3]);
+  if (!date) { dm = flat.match(/(?:^|[^\d])(\d{1,2})\/(\d{1,2})(?!\d)/); if (dm) date = guess(+dm[1], +dm[2]); }
+  if (!date) { dm = flat.match(/(\d{1,2})월\s*(\d{1,2})일/); if (dm) date = guess(+dm[1], +dm[2]); }
+  if (!date) date = pd;
+  const tm = flat.match(/(?:^|[^\d])([01]?\d|2[0-3]):([0-5]\d)(?!\d)/);
+  const time = tm ? pad2(+tm[1]) + ':' + tm[2] : '';
+
+  /* 이름(가맹점) */
+  let name = '';
+  if (kind === 'refund') {
+    const lb = flat.match(/(?:할인내역|환급내역|적립내역|입금내역|내역)\s*[:：]\s*(.+?)(?=\s*[▶▷►◆■●]|\s+(?:할인금액|환급금액|환급금|입금액|할인방법)\s*[:：]|$)/);
+    name = lb ? lb[1].trim().slice(0, 40) : (issuer ? issuer + ' 환급' : '환급');
+  } else {
+    /* ① 줄이 나뉘어 있으면 금액 줄 바로 위 줄 */
+    const li = lines.findIndex(l => /원/.test(l) && l.replace(/,/g, '').includes(String(am.v)));
+    if (li > 0) { for (let j = li - 1; j >= 0 && !name; j--) name = notiClean(lines[j]); }
+    /* ② 금액 줄에서 금액 뒤쪽 */
+    if (!name && li >= 0) {
+      const ln = lines[li], k = ln.replace(/,/g, '').indexOf(String(am.v));
+      const after = ln.slice(ln.search(/원/) + 1);
+      name = notiClean(after.split(/누적|잔액|잔고|한도|문의|이용내역/)[0]);
+      void k;
+    }
+    /* ③ 한 줄로 붙어 있는 문자: 금액 뒤 → 앞 */
+    if (!name) name = notiClean(flat.slice(am.e).split(/누적|잔액|잔고|한도|문의|이용내역/)[0]);
+    if (!name) { const b = notiClean(flat.slice(0, am.i)); name = b.length > 30 ? b.slice(-30).trim() : b; }
+    if (name && issuer && name === issuer) name = '';
+  }
+  const type = inx ? 'in' : 'out';
+  return { kind, type, amount: am.v, name, date, time, card, issuer, inst, cum, flat: flat.slice(0, 400) };
+}
+
+/* ---------- 받은 알림을 대기함에 넣기 ---------- */
+function notiFindMatch(p) {
+  const N = notiDB(), k = normName(p.name);
+  const near = n => { const a = normName(n); return !a || !k || a.includes(k) || k.includes(a); };
+  const pe = N.pend.find(x => x.kind === 'appr' && x.amount === p.amount && near(x.name));
+  if (pe) return { w: 'p', id: pe.id };
+  const from = addDays(p.date, -75);
+  const c = db.tx.filter(t => t.type === 'out' && t.amount === p.amount && t.date >= from && t.date <= addDays(p.date, 1) && !t.planned)
+    .sort((a, b) => ((near(b.name) ? 1 : 0) - (near(a.name) ? 1 : 0)) || (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))[0];
+  return c && near(c.name) ? { w: 't', id: c.id } : null;
+}
+function notiIngest(it) {
+  const p = notiParse(it.title, it.text, it.t); if (!p) return false;
+  const N = notiDB(), now = Date.now();
+  const k1 = 'r' + notiHash((it.title || '') + '|' + (it.text || ''));
+  const k2 = p.time ? 's' + notiHash([p.kind === 'cancel' ? 'c' : 'a', p.amount, p.date, p.time].join('|')) : '';
+  if (N.seen[k1] || (k2 && N.seen[k2])) return false;
+  N.seen[k1] = now; if (k2) N.seen[k2] = now;
+  Object.keys(N.seen).forEach(k => { if (now - N.seen[k] > 120 * 86400000) delete N.seen[k]; });
+  const item = { id: 'n' + now.toString(36) + Math.random().toString(36).slice(2, 6), kind: p.kind, type: p.type, amount: p.amount, name: p.name, date: p.date, time: p.time, card: p.card, issuer: p.issuer, inst: p.inst, raw: p.flat, app: it.pkg || '', cat: '' };
+  if (p.kind !== 'cancel') item.cat = suggestCat(p.name, p.type) || '';
+  if (p.kind === 'cancel') { const mt = notiFindMatch(p); if (mt) item.match = mt; }
+  /* 카드 누적금액이 이어지지 않으면 그 사이 알림이 빠졌다는 뜻 */
+  const ck = p.card || p.issuer;
+  if (p.cum != null && ck && (p.kind === 'appr' || p.kind === 'cancel')) {
+    const prev = N.cum[ck];
+    if (p.kind === 'appr' && prev && prev.d) {
+      const dd = daysBetween(prev.d, p.date);
+      if (dd >= 0 && dd <= 45 && p.cum >= prev.v) { const gap = p.cum - prev.v - p.amount; if (gap > 0) item.gap = gap; }
+    }
+    if (!prev || !prev.d || p.date >= prev.d) N.cum[ck] = { v: p.cum, d: p.date };
+  }
+  N.pend.push(item);
+  return true;
+}
+let notiBusy = false;
+async function notiPull() {
+  const P = notiPlug(); if (!P || notiBusy) return;
+  notiBusy = true;
+  try {
+    const r = await P.drain(), items = (r && r.items) || [];
+    if (items.length) {
+      let add = 0;
+      items.forEach(it => { try { if (notiIngest(it)) add++; } catch (e) { } });
+      persist();
+      if (add) {
+        renderAll();
+        const pm = $('#notiPanel'); if (pm && !pm.contains(document.activeElement)) paintNoti();
+        const sp = $('#setPanel'); if (sp) renderSettings();
+        toast(`확인할 알림 ${add}건이 왔어요`, 2500);
+      }
+    }
+  } catch (e) { } finally { notiBusy = false; }
+}
+async function notiStatus() {
+  const P = notiPlug(); if (!P) return null;
+  try { const s = await P.status(); window.__notiSt = s; return s; } catch (e) { return null; }
+}
+const notiLine = () => {
+  const s = window.__notiSt, n = notiCount();
+  const a = !s ? '카드·은행 알림에서 지출과 수입을 찾아 줘요' : s.enabled ? '켜짐 · 알림을 읽고 있어요' : '꺼짐 · 알림 접근을 허용해 주세요';
+  return a + (n ? ` · 확인할 알림 ${n}건` : '');
+};
+function notiBoot() {
+  if (!notiPlug()) return;
+  notiPull(); notiStatus();
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { notiPull(); notiStatus(); } });
+  setInterval(() => { if (document.visibilityState === 'visible') notiPull(); }, 10000);
+}
+
+/* ---------- 등록 · 무시 · 취소 처리 ---------- */
+function notiRegister(it, quiet) {
+  const N = notiDB();
+  if (!(it.amount > 0)) { if (!quiet) toast('금액을 확인해 주세요'); return false; }
+  if (!it.cat) { if (!quiet) toast('분류를 골라 주세요'); return false; }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(it.date || '')) { if (!quiet) toast('날짜를 확인해 주세요'); return false; }
+  const name = String(it.name || '').trim();
+  db.tx.push({ id: newId('t'), order: Date.now() + (db.nextId || 0), date: it.date, type: it.type, amount: it.amount, cat: it.cat, sub: '', kind: 'var', name, src: 'noti' });
+  if (name.length >= 2 && !catById(it.cat).loan) learnRule(name, it.cat);
+  N.pend = N.pend.filter(x => x.id !== it.id);
+  return true;
+}
+function notiApplyCancel(it) {
+  const N = notiDB(), mt = it.match; if (!mt) return false;
+  if (mt.w === 't') { if (!db.tx.some(t => t.id === mt.id)) return false; db.tx = db.tx.filter(t => t.id !== mt.id); }
+  else N.pend = N.pend.filter(x => x.id !== mt.id);
+  N.pend = N.pend.filter(x => x.id !== it.id);
+  return true;
+}
+
+/* ---------- 확인 대기함 화면 ---------- */
+function notiCardHTML(it) {
+  const cn = it.kind === 'cancel';
+  const tag = cn ? '취소' : it.type === 'in' ? '수입' : '지출';
+  const when = it.date.slice(5).replace('-', '/') + (it.time ? ' ' + it.time : '');
+  const meta = [when, it.card || it.issuer, it.inst].filter(Boolean).join(' · ');
+  let body;
+  if (cn) {
+    let mt = '일치하는 내역을 찾지 못했어요. 이미 지웠거나 등록한 적이 없는 승인일 수 있어요.', can = false;
+    if (it.match && it.match.w === 't') { const t = db.tx.find(x => x.id === it.match.id); if (t) { can = true; mt = `등록된 내역: ${t.date.slice(5).replace('-', '/')} ${esc(t.name || catById(t.cat).name)} ${fmt(t.amount)}원`; } }
+    else if (it.match && it.match.w === 'p') { const x = notiDB().pend.find(y => y.id === it.match.id); if (x) { can = true; mt = `아직 확인 대기 중인 같은 승인 알림이 있어요: ${esc(x.name || '이름 없음')} ${fmt(x.amount)}원`; } }
+    body = `<div class="ntt">${esc(it.name || '이름 없음')} <b class="num">${fmt(it.amount)}원</b> 승인 취소</div><div class="hint">${mt}</div>
+    <div class="btns">${can ? '<button class="btn pri" data-n="cdo">' + (it.match.w === 't' ? '내역 삭제' : '함께 지우기') + '</button>' : ''}<button class="btn" data-n="skip">${can ? '그대로 두기' : '확인'}</button></div>`;
+  } else {
+    const opts = catsFor(it.type).map(c => `<option value="${c.id}" ${it.cat === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+    body = `<div class="row"><input class="fld" data-f="name" value="${esc(it.name)}" placeholder="이름(가맹점)" maxlength="40"><input class="fld" data-f="amount" inputmode="numeric" value="${fmt(it.amount)}" style="flex:none;width:104px;text-align:right"></div>
+    <div class="row"><input type="date" class="fld" data-f="date" value="${esc(it.date)}" style="flex:none;width:150px"><select class="fld" data-f="cat"><option value="">분류 선택</option>${opts}</select></div>
+    ${it.gap ? `<div class="hint warn">카드 누적금액으로 보면 그 사이 약 ${fmt(it.gap)}원 알림이 빠진 것 같아요.</div>` : ''}
+    <div class="btns"><button class="btn pri" data-n="add">등록</button><button class="btn" data-n="skip">무시</button></div>`;
+  }
+  return `<div class="nt" data-id="${it.id}"><div class="nth"><span class="ntg ${cn ? 'cn' : it.type}">${tag}</span><span>${esc(meta)}</span></div>${body}<details><summary>알림 원문</summary><div class="ntr">${esc(it.raw)}</div></details></div>`;
+}
+function paintNoti() {
+  const m = $('#notiPanel'); if (!m) return;
+  const N = notiDB(), s = window.__notiSt, n = N.pend.length;
+  const ready = N.pend.filter(x => x.kind !== 'cancel' && x.cat && x.amount > 0).length;
+  let st;
+  if (!s) st = '<div class="hint">알림 상태를 확인하고 있어요…</div>';
+  else if (!s.enabled) st = `<div class="nt warnbox"><b>알림 접근이 꺼져 있어요</b><div class="hint">‘설정 열기’ → 목록에서 <b>달력 가계부</b>를 켜 주세요. 켜지지 않고 막혀 있으면 ‘앱 정보 열기’ → 오른쪽 위 ⋮ → <b>제한된 설정 허용</b>을 누른 뒤 다시 시도하세요.</div><div class="btns"><button class="btn pri" data-n="open">설정 열기</button><button class="btn" data-n="info">앱 정보 열기</button></div></div>`;
+  else st = `<div class="kv"><span>알림 읽기 켜짐</span>${s.battery ? '' : '<button class="btn" data-n="batt">배터리 제한 풀기</button>'}</div>${s.battery ? '' : '<div class="hint">배터리 절약 때문에 앱이 멈추면 알림을 놓칠 수 있어요. ‘제한 없음’으로 바꿔 두면 좋아요.</div>'}`;
+  $('.panel', m).innerHTML = `
+  <div class="ph"><b>카드·문자 알림</b><span class="sp"></span><button class="x" data-n="x">✕</button></div>
+  <div class="pb">
+    ${st}
+    <div class="sec">확인할 알림 ${n}건</div>
+    ${ready > 1 ? `<div class="btns" style="margin:0 0 4px"><button class="btn pri" data-n="bulk">분류된 ${ready}건 한꺼번에 등록</button></div>` : ''}
+    ${n ? N.pend.slice().reverse().map(notiCardHTML).join('') : '<div class="hint" style="padding:10px 2px">확인할 알림이 없어요. 카드 승인 알림이 오면 여기에 쌓여요. 등록을 눌러야만 내역에 들어가요.</div>'}
+    <div class="btns"><button class="btn" data-n="log">수집 기록 보기</button>${s && s.enabled ? '<button class="btn" data-n="open">알림 접근 설정</button>' : ''}</div>
+    <div class="hint">알림 내용은 이 폰 안에서만 처리하고 어디로도 보내지 않아요. 카드사·은행·문자·카톡 알림 중 금액과 승인·입금 같은 말이 있는 것만 가져와요.</div>
+  </div>`;
+}
+function openNoti() {
+  const m = openModal('', 'full'); m.id = 'notiPanel';
+  paintNoti();
+  notiStatus().then(() => { if ($('#notiPanel') === m) paintNoti(); });
+  notiPull();
+  const find = e => { const c = e.target.closest('.nt[data-id]'); return c ? notiDB().pend.find(x => x.id === c.dataset.id) : null; };
+  const done = msg => { persist(); renderAll(); paintNoti(); const sp = $('#setPanel'); if (sp) renderSettings(); if (msg) toast(msg, 1200); };
+  m.addEventListener('click', e => {
+    const b = e.target.closest('[data-n]'); if (!b) return;
+    const a = b.dataset.n, P = notiPlug(), N = notiDB();
+    if (a === 'x') { closeModal(m); renderAll(); }
+    else if (a === 'open') { if (P) P.openSettings().catch(() => toast('설정 화면을 열지 못했어요')); }
+    else if (a === 'info') { if (P) P.openAppInfo().catch(() => toast('앱 정보를 열지 못했어요')); }
+    else if (a === 'batt') { if (P) P.openBattery().catch(() => toast('설정 화면을 열지 못했어요')); }
+    else if (a === 'log') openNotiLog();
+    else if (a === 'bulk') {
+      let c = 0; N.pend.filter(x => x.kind !== 'cancel' && x.cat && x.amount > 0).forEach(x => { if (notiRegister(x, true)) c++; });
+      done(c + '건을 등록했어요');
+    } else {
+      const it = find(e); if (!it) return;
+      if (a === 'add') { if (notiRegister(it)) done('등록했어요'); }
+      else if (a === 'skip') { N.pend = N.pend.filter(x => x.id !== it.id); done(); }
+      else if (a === 'cdo') { if (notiApplyCancel(it)) done('취소를 반영했어요'); else { N.pend = N.pend.filter(x => x.id !== it.id); done(); } }
+    }
+  });
+  const upd = e => {
+    const f = e.target.dataset && e.target.dataset.f; if (!f) return;
+    const it = find(e); if (!it) return;
+    if (f === 'name') it.name = e.target.value;
+    else if (f === 'amount') it.amount = parseInt(String(e.target.value).replace(/\D/g, ''), 10) || 0;
+    else if (f === 'date') it.date = e.target.value;
+    else if (f === 'cat') it.cat = e.target.value;
+  };
+  m.addEventListener('input', upd);
+  m.addEventListener('change', e => { upd(e); if (e.target.dataset && e.target.dataset.f === 'amount') { const it = find(e); if (it) e.target.value = fmt(it.amount); } persist(); });
+}
+
+/* ---------- 수집 기록 (어떤 알림이 들어오는지 보는 화면) ---------- */
+async function openNotiLog() {
+  const P = notiPlug(); if (!P) return;
+  const m = openModal('', 'full'); m.id = 'notiLog';
+  let items = [], on = true;
+  const load = async () => {
+    try { items = ((await P.log()) || {}).items || []; } catch (e) { items = []; }
+    try { const s = await P.status(); on = s.logOn !== false; } catch (e) { }
+  };
+  const logText = () => items.slice().reverse().map(x => `[${new Date(x.t).toLocaleString('ko-KR')}] ${x.pkg} ${x.m ? '(가져옴)' : '(제외)'}\n제목: ${x.title}\n내용: ${x.text}`).join('\n\n');
+  const paint = () => {
+    $('.panel', m).innerHTML = `
+    <div class="ph"><b>수집 기록</b><span class="sp"></span><button class="x" data-l="x">✕</button></div>
+    <div class="pb">
+      <div class="hint" style="margin:0 0 6px">알림이 어떤 글자로 들어오는지 확인하는 화면이에요. 카드 알림이 인식되지 않으면 ‘전체 복사’ 후 붙여넣어 알려 주세요. 최근 30건만 남고, 이 폰 안에만 저장돼요.</div>
+      <div class="list-item"><div class="m">기록 남기기<small>끄면 기록을 지우고 더 이상 남기지 않아요 (등록용 알림은 계속 가져와요)</small></div><button class="sw ${on ? 'on' : ''}" data-l="tog"></button></div>
+      <div class="btns"><button class="btn pri" data-l="copy">전체 복사</button><button class="btn" data-l="clr">기록 지우기</button></div>
+      <div class="sec">최근 알림 ${items.length}건</div>
+      ${items.length ? items.slice().reverse().map(x => `<div class="nt"><div class="nth"><span class="ntg ${x.m ? 'in' : ''}">${x.m ? '가져옴' : '제외'}</span><span>${esc(new Date(x.t).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }))} · ${esc(x.pkg)}</span></div><div class="ntt">${esc(x.title)}</div><div class="ntr">${esc(x.text)}</div></div>`).join('') : '<div class="hint" style="padding:10px 2px">아직 기록이 없어요.</div>'}
+    </div>`;
+  };
+  await load(); paint();
+  m.addEventListener('click', async e => {
+    const b = e.target.closest('[data-l]'); if (!b) return;
+    const a = b.dataset.l;
+    if (a === 'x') closeModal(m);
+    else if (a === 'clr') { try { await P.clearLog(); } catch (x) { } await load(); paint(); toast('기록을 지웠어요', 1200); }
+    else if (a === 'tog') { try { await P.setLog({ on: !on }); } catch (x) { } await load(); paint(); }
+    else if (a === 'copy') {
+      const t = logText();
+      try { await navigator.clipboard.writeText(t); toast('복사했어요'); }
+      catch (x) { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); toast('복사했어요'); } catch (y) { toast('복사하지 못했어요'); } ta.remove(); }
+    }
+  });
+}
+ACT.noti = () => openNoti();
 /* ===== 달력 가계부 · 시작 ===== */
 (function boot() {
   loadDB();
@@ -3056,6 +3397,7 @@ async function drvBoot() {
   lockNow();
   try { safeCheck().then(() => firstRunAsk()).catch(() => { }); } catch (e) { }
   try { drvBoot(); } catch (e) { }
+  try { notiBoot(); } catch (e) { }
   try { if (window.safeMirror && dbMeaningful(db)) window.safeMirror(); } catch (e) { }
   renderAll();
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { }
