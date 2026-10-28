@@ -76,6 +76,378 @@ jobs:
           npx cap add android
           npx cap sync android
 
+      - name: 알림 읽기 기능 넣기 (안드로이드 코드)
+        working-directory: apk/android
+        run: |
+          D=app/src/main/java/com/dayago/gagyebu
+          mkdir -p $D
+          cat > $D/NotiStore.java <<'JAVA_EOF'
+          package com.dayago.gagyebu;
+
+          import android.content.Context;
+          import android.content.SharedPreferences;
+          import org.json.JSONArray;
+          import org.json.JSONObject;
+
+          /* 알림을 폰 안에 잠깐 쌓아 두는 곳 (앱이 꺼져 있어도 받은 알림이 사라지지 않게) */
+          final class NotiStore {
+              private static final String PREF = "gagyebu_noti";
+              private static final int MAX_QUEUE = 300;
+              private static final int MAX_LOG = 30;
+
+              private NotiStore() { }
+
+              private static SharedPreferences sp(Context c) {
+                  return c.getApplicationContext().getSharedPreferences(PREF, Context.MODE_PRIVATE);
+              }
+
+              private static JSONArray read(Context c, String key) {
+                  try {
+                      String s = sp(c).getString(key, "[]");
+                      return new JSONArray(s == null ? "[]" : s);
+                  } catch (Exception e) {
+                      return new JSONArray();
+                  }
+              }
+
+              private static void write(Context c, String key, JSONArray a) {
+                  sp(c).edit().putString(key, a.toString()).apply();
+              }
+
+              private static JSONArray add(JSONArray a, JSONObject o, int max) {
+                  JSONArray out = new JSONArray();
+                  int from = Math.max(0, a.length() + 1 - max);
+                  for (int i = from; i < a.length(); i++) out.put(a.opt(i));
+                  out.put(o);
+                  return out;
+              }
+
+              /* 가계부로 넘길 알림 */
+              static synchronized void pushQueue(Context c, JSONObject o) {
+                  write(c, "q", add(read(c, "q"), o, MAX_QUEUE));
+              }
+
+              static synchronized JSONArray drainQueue(Context c) {
+                  JSONArray a = read(c, "q");
+                  if (a.length() > 0) write(c, "q", new JSONArray());
+                  return a;
+              }
+
+              /* 어떤 알림이 들어오는지 볼 수 있는 수집 기록 */
+              static synchronized void pushLog(Context c, JSONObject o) {
+                  write(c, "log", add(read(c, "log"), o, MAX_LOG));
+              }
+
+              static synchronized JSONArray readLog(Context c) {
+                  return read(c, "log");
+              }
+
+              static synchronized void clearLog(Context c) {
+                  write(c, "log", new JSONArray());
+              }
+
+              static boolean logOn(Context c) {
+                  return sp(c).getBoolean("logOn", true);
+              }
+
+              static void setLogOn(Context c, boolean on) {
+                  sp(c).edit().putBoolean("logOn", on).apply();
+              }
+          }
+          JAVA_EOF
+          cat > $D/NotiService.java <<'JAVA_EOF'
+          package com.dayago.gagyebu;
+
+          import android.app.Notification;
+          import android.content.ComponentName;
+          import android.os.Build;
+          import android.os.Bundle;
+          import android.service.notification.NotificationListenerService;
+          import android.service.notification.StatusBarNotification;
+          import java.util.HashMap;
+          import java.util.Iterator;
+          import java.util.Map;
+          import java.util.regex.Pattern;
+          import org.json.JSONObject;
+
+          /* 카드·은행·문자·카톡 알림을 읽어 두는 서비스.
+             금액(○○원)과 승인·입금 같은 말이 함께 있는 알림만 가계부로 넘기고,
+             서버로는 아무것도 보내지 않아요. */
+          public class NotiService extends NotificationListenerService {
+              static volatile boolean connected = false;
+
+              private static final Pattern MONEY = Pattern.compile("[0-9][0-9,]*\\s*원");
+              private static final String[] KEYS = {
+                  "승인", "취소", "입금", "출금", "결제", "환급", "환불", "이체", "사용", "이용",
+                  "캐시백", "충전", "인출", "일시불", "할부"
+              };
+              private static final String[] WATCH = {
+                  "com.kakao.talk", "com.samsung.android.messaging", "com.google.android.apps.messaging",
+                  "com.android.mms", "com.samsung.android.app.messaging"
+              };
+              private static final Map<String, Long> RECENT = new HashMap<String, Long>();
+
+              @Override
+              public void onListenerConnected() {
+                  super.onListenerConnected();
+                  connected = true;
+              }
+
+              @Override
+              public void onListenerDisconnected() {
+                  super.onListenerDisconnected();
+                  connected = false;
+                  try {
+                      if (Build.VERSION.SDK_INT >= 24) {
+                          NotificationListenerService.requestRebind(new ComponentName(this, NotiService.class));
+                      }
+                  } catch (Exception e) {
+                      /* 다시 연결하지 못해도 다음 실행 때 다시 시도해요 */
+                  }
+              }
+
+              private static String str(CharSequence s) {
+                  return s == null ? "" : s.toString().trim();
+              }
+
+              private static boolean has(String[] arr, String v) {
+                  for (String a : arr) if (a.equals(v)) return true;
+                  return false;
+              }
+
+              private static boolean keyword(String s) {
+                  for (String k : KEYS) if (s.contains(k)) return true;
+                  return false;
+              }
+
+              @Override
+              public void onNotificationPosted(StatusBarNotification sbn) {
+                  try {
+                      if (sbn == null) return;
+                      String pkg = sbn.getPackageName();
+                      if (pkg == null || pkg.equals(getPackageName())) return;
+                      Notification n = sbn.getNotification();
+                      if (n == null || n.extras == null) return;
+                      if ((n.flags & Notification.FLAG_GROUP_SUMMARY) != 0) return;
+                      Bundle e = n.extras;
+
+                      String title = str(e.getCharSequence(Notification.EXTRA_TITLE));
+                      String text = str(e.getCharSequence(Notification.EXTRA_TEXT));
+                      String big = str(e.getCharSequence(Notification.EXTRA_BIG_TEXT));
+                      StringBuilder lines = new StringBuilder();
+                      CharSequence[] arr = e.getCharSequenceArray(Notification.EXTRA_TEXT_LINES);
+                      if (arr != null) {
+                          for (CharSequence c : arr) {
+                              if (c == null) continue;
+                              if (lines.length() > 0) lines.append('\n');
+                              lines.append(c.toString().trim());
+                          }
+                      }
+                      /* 가장 긴 본문을 쓴다 (알림 요약보다 펼친 내용이 더 완전해요) */
+                      String body = text;
+                      if (big.length() > body.length()) body = big;
+                      if (lines.length() > body.length()) body = lines.toString();
+                      if (body.length() > 1500) body = body.substring(0, 1500);
+                      if (title.length() > 120) title = title.substring(0, 120);
+                      if (title.isEmpty() && body.isEmpty()) return;
+
+                      String all = title + " " + body;
+                      boolean hit = MONEY.matcher(all).find() && keyword(all);
+                      boolean watch = has(WATCH, pkg);
+                      if (!hit && !(watch && NotiStore.logOn(this))) return;
+
+                      /* 같은 알림이 짧은 시간에 다시 올라오면 한 번만 */
+                      String sig = pkg + "|" + title + "|" + body;
+                      long now = System.currentTimeMillis();
+                      synchronized (RECENT) {
+                          Iterator<Map.Entry<String, Long>> it = RECENT.entrySet().iterator();
+                          while (it.hasNext()) {
+                              if (now - it.next().getValue() > 120000L) it.remove();
+                          }
+                          if (RECENT.containsKey(sig)) return;
+                          RECENT.put(sig, now);
+                      }
+
+                      JSONObject o = new JSONObject();
+                      o.put("pkg", pkg);
+                      o.put("title", title);
+                      o.put("text", body);
+                      o.put("t", sbn.getPostTime() > 0 ? sbn.getPostTime() : now);
+                      if (hit) {
+                          NotiStore.pushQueue(this, o);
+                          o.put("m", 1);
+                      } else {
+                          o.put("m", 0);
+                          if (o.getString("text").length() > 160) o.put("text", o.getString("text").substring(0, 160));
+                      }
+                      if (NotiStore.logOn(this)) NotiStore.pushLog(this, o);
+                  } catch (Exception ex) {
+                      /* 알림 하나를 못 읽어도 다른 알림에는 영향이 없게 */
+                  }
+              }
+          }
+          JAVA_EOF
+          cat > $D/NotiPlugin.java <<'JAVA_EOF'
+          package com.dayago.gagyebu;
+
+          import android.content.ComponentName;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.net.Uri;
+          import android.os.Build;
+          import android.os.PowerManager;
+          import android.provider.Settings;
+          import android.service.notification.NotificationListenerService;
+          import com.getcapacitor.JSObject;
+          import com.getcapacitor.Plugin;
+          import com.getcapacitor.PluginCall;
+          import com.getcapacitor.PluginMethod;
+          import com.getcapacitor.annotation.CapacitorPlugin;
+          import org.json.JSONArray;
+
+          /* 웹 화면(가계부)과 안드로이드 알림 서비스를 이어 주는 다리 */
+          @CapacitorPlugin(name = "Noti")
+          public class NotiPlugin extends Plugin {
+
+              private boolean listenerEnabled() {
+                  Context c = getContext();
+                  String flat = Settings.Secure.getString(c.getContentResolver(), "enabled_notification_listeners");
+                  return flat != null && flat.contains(c.getPackageName());
+              }
+
+              @PluginMethod
+              public void status(PluginCall call) {
+                  try {
+                      Context c = getContext();
+                      boolean on = listenerEnabled();
+                      if (on && !NotiService.connected && Build.VERSION.SDK_INT >= 24) {
+                          try {
+                              NotificationListenerService.requestRebind(new ComponentName(c, NotiService.class));
+                          } catch (Exception e) {
+                              /* 무시 */
+                          }
+                      }
+                      boolean ignoring = false;
+                      PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
+                      if (pm != null && Build.VERSION.SDK_INT >= 23) ignoring = pm.isIgnoringBatteryOptimizations(c.getPackageName());
+                      JSObject r = new JSObject();
+                      r.put("enabled", on);
+                      r.put("connected", NotiService.connected);
+                      r.put("battery", ignoring);
+                      r.put("sdk", Build.VERSION.SDK_INT);
+                      r.put("logOn", NotiStore.logOn(c));
+                      call.resolve(r);
+                  } catch (Exception e) {
+                      call.reject("상태를 읽지 못했어요");
+                  }
+              }
+
+              private void launch(PluginCall call, Intent i) {
+                  try {
+                      i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                      getContext().startActivity(i);
+                      call.resolve();
+                  } catch (Exception e) {
+                      call.reject("설정 화면을 열지 못했어요");
+                  }
+              }
+
+              @PluginMethod
+              public void openSettings(PluginCall call) {
+                  launch(call, new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
+              }
+
+              @PluginMethod
+              public void openAppInfo(PluginCall call) {
+                  Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                  i.setData(Uri.parse("package:" + getContext().getPackageName()));
+                  launch(call, i);
+              }
+
+              @PluginMethod
+              public void openBattery(PluginCall call) {
+                  launch(call, new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+              }
+
+              @PluginMethod
+              public void drain(PluginCall call) {
+                  try {
+                      JSONArray a = NotiStore.drainQueue(getContext());
+                      JSObject r = new JSObject();
+                      r.put("items", a);
+                      call.resolve(r);
+                  } catch (Exception e) {
+                      call.reject("알림을 가져오지 못했어요");
+                  }
+              }
+
+              @PluginMethod
+              public void log(PluginCall call) {
+                  try {
+                      JSObject r = new JSObject();
+                      r.put("items", NotiStore.readLog(getContext()));
+                      call.resolve(r);
+                  } catch (Exception e) {
+                      call.reject("기록을 읽지 못했어요");
+                  }
+              }
+
+              @PluginMethod
+              public void clearLog(PluginCall call) {
+                  NotiStore.clearLog(getContext());
+                  call.resolve();
+              }
+
+              @PluginMethod
+              public void setLog(PluginCall call) {
+                  Boolean on = call.getBoolean("on", true);
+                  NotiStore.setLogOn(getContext(), on == null || on);
+                  if (on != null && !on) NotiStore.clearLog(getContext());
+                  call.resolve();
+              }
+          }
+          JAVA_EOF
+          cat > $D/MainActivity.java <<'JAVA_EOF'
+          package com.dayago.gagyebu;
+
+          import android.os.Bundle;
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  registerPlugin(NotiPlugin.class);
+                  super.onCreate(savedInstanceState);
+              }
+          }
+          JAVA_EOF
+          cat > /tmp/patch-manifest.py <<'PY_EOF'
+          import re, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          if 'com.dayago.gagyebu.NotiService' in s or '.NotiService' in s:
+              print('이미 들어 있어요'); sys.exit(0)
+          svc = '''
+                  <service
+                      android:name=".NotiService"
+                      android:label="달력 가계부 알림 읽기"
+                      android:exported="true"
+                      android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+                      <intent-filter>
+                          <action android:name="android.service.notification.NotificationListenerService" />
+                      </intent-filter>
+                  </service>
+          '''
+          if '</application>' not in s:
+              print('application 태그를 못 찾았어요'); sys.exit(1)
+          s = s.replace('</application>', svc + '    </application>', 1)
+          open(p, 'w', encoding='utf-8').write(s)
+          print('알림 서비스를 매니페스트에 넣었어요')
+          PY_EOF
+          python3 /tmp/patch-manifest.py app/src/main/AndroidManifest.xml
+          grep -n "NotiService" app/src/main/AndroidManifest.xml
+          ls -la $D
+
       - name: 앱 아이콘 만들기
         working-directory: apk
         run: npx capacitor-assets generate --android || echo "아이콘 생성 실패 - 기본 아이콘을 써요"
