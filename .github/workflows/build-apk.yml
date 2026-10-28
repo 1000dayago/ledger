@@ -1,0 +1,165 @@
+name: Build APK
+
+# 달력 가계부 안드로이드 앱(APK)을 GitHub 에서 자동으로 만들어요.
+# 실행: Actions 탭 → Build APK → Run workflow  (index.html 이 바뀔 때도 자동 실행)
+# 결과: 저장소 오른쪽 Releases 에 gagyebu.apk 가 올라와요.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths: ['index.html']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: 프로젝트 준비
+        run: |
+          mkdir -p apk/www apk/assets
+          cd apk
+          cp ../index.html www/index.html
+          cp ../manifest.webmanifest www/ 2>/dev/null || true
+          cp ../icon-192.png ../icon-512.png ../icon-maskable-512.png www/ 2>/dev/null || true
+          cp ../icon-512.png assets/icon-only.png
+          cp ../icon-512.png assets/icon-foreground.png
+          cp ../icon-maskable-512.png assets/icon-background.png 2>/dev/null || cp ../icon-512.png assets/icon-background.png
+          cat > package.json <<'EOF'
+          {
+            "name": "gagyebu-apk",
+            "version": "1.0.0",
+            "private": true,
+            "dependencies": {
+              "@capacitor/android": "^6.1.2",
+              "@capacitor/app": "^6.0.1",
+              "@capacitor/core": "^6.1.2",
+              "@capacitor/filesystem": "^6.0.1",
+              "@capacitor/share": "^6.0.2"
+            },
+            "devDependencies": {
+              "@capacitor/assets": "^3.0.5",
+              "@capacitor/cli": "^6.1.2"
+            }
+          }
+          EOF
+          cat > capacitor.config.json <<'EOF'
+          {
+            "appId": "com.dayago.gagyebu",
+            "appName": "달력 가계부",
+            "webDir": "www",
+            "server": { "androidScheme": "https" },
+            "android": { "backgroundColor": "#f2f4f7" }
+          }
+          EOF
+          VER=$(grep -o "APP_VERSION = '[0-9.]*'" www/index.html | head -1 | grep -o "[0-9.]*")
+          echo "APPVER=$VER" >> $GITHUB_ENV
+          echo "웹앱 버전: $VER"
+
+      - name: 안드로이드 프로젝트 만들기
+        working-directory: apk
+        run: |
+          npm install --no-audit --no-fund
+          npx cap add android
+          npx cap sync android
+
+      - name: 앱 아이콘 만들기
+        working-directory: apk
+        run: npx capacitor-assets generate --android || echo "아이콘 생성 실패 - 기본 아이콘을 써요"
+
+      - name: 버전 번호 넣기
+        working-directory: apk/android/app
+        run: |
+          sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/" build.gradle
+          sed -i "s/versionName \"1.0\"/versionName \"$APPVER\"/" build.gradle
+          grep -n "versionCode\|versionName" build.gradle
+
+      - name: 고정 서명 키 적용 (같은 키로 만들어야 이전 앱 위에 덮어 설치돼요)
+        run: |
+          mkdir -p ~/.android
+          cat > /tmp/ks.b64 <<'EOF'
+          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
+          EOF
+          base64 -d /tmp/ks.b64 > ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore -storepass android | head -3
+
+      - name: APK 빌드
+        working-directory: apk/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: APK 이름 정리
+        run: cp apk/android/app/build/outputs/apk/debug/app-debug.apk gagyebu.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gagyebu-apk
+          path: gagyebu.apk
+
+      - name: 릴리스로 올리기 (폰에서 바로 내려받기)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: 가계부 APK v${{ env.APPVER }} (빌드 ${{ github.run_number }})
+          files: gagyebu.apk
+          body: |
+            달력 가계부 안드로이드 앱 v${{ env.APPVER }}
+            폰에서 gagyebu.apk 를 내려받아 설치하세요. (이전 버전 위에 그대로 덮어 설치돼요)
