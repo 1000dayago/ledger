@@ -577,7 +577,10 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.13.0';
+const APP_VERSION = '2.14.0';
+const PAGES_URL = 'https://1000dayago.github.io/ledger/index.html';
+const isApk = () => { try { return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); } catch (e) { return false; } };
+const nativePlug = n => { try { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins[n]) || null; } catch (e) { return null; } };
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -2278,6 +2281,7 @@ function renderSettings() {
 function doBackup(quiet) {
   try { S().bkSig = dataSig(); } catch (e) { }
   const text = exportJSON();
+  if (isApk()) { apkShare(text, `gagyebu-${todayStr().replace(/-/g, '')}.json`, quiet); return; }
   const blob = new Blob([text], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   const t = todayStr().replace(/-/g, '');
@@ -2313,11 +2317,12 @@ async function doUpdate() {
   toast('최신 버전을 확인하는 중…', 1500);
   let latest = '';
   try {
-    const r = await fetch('index.html?chk=' + Date.now(), { cache: 'no-store' });
+    const r = await fetch(isApk() ? PAGES_URL + '?chk=' + Date.now() : 'index.html?chk=' + Date.now(), { cache: 'no-store' });
     const mm = (await r.text()).match(/APP_VERSION = '([\d.]+)'/); latest = mm ? mm[1] : '';
   } catch (e) { }
   if (!latest) { toast('확인하지 못했어요 · 인터넷 연결을 확인해 주세요', 2600); return; }
   if (latest === APP_VERSION) { toast(`최신 버전이에요 (v${APP_VERSION})`, 2600); return; }
+  if (isApk()) { toast(`새 버전 v${latest}이 있어요 · 새 APK를 설치해 주세요 (GitHub 릴리스)`, 4500); return; }
   try { localStorage.setItem('gagyebu.upd', latest); } catch (e) { }
   try {
     if ('caches' in window) await Promise.all((await caches.keys()).filter(k => k.startsWith('gagyebu-')).map(k => caches.delete(k)));   /* 같은 주소의 다른 앱(마인드맵) 캐시는 건드리지 않아요 */
@@ -2862,7 +2867,7 @@ async function openSafeList() {
 
 /* 주기적 백업 파일: 앱을 연 뒤 첫 터치 때(다운로드는 터치 직후에만 허용돼요) 기간이 지났으면 저장 */
 function autoBkDue() {
-  const mode = S().autoBk || 'week'; if (mode === 'off' || !db.tx.length) return false;
+  const mode = S().autoBk || 'week'; if (isApk() || mode === 'off' || !db.tx.length) return false;
   if (S().bkSig && S().bkSig === dataSig()) return false;   /* 지난 백업 이후 바뀐 게 없으면 파일을 만들지 않아요 */
   const age = db.lastBackup ? daysBetween(db.lastBackup, todayStr()) : 999;
   return age >= ({ day: 1, week: 7, month: 30 }[mode] || 7);
@@ -2873,6 +2878,31 @@ function autoBkNow() { if (!autoBkDue()) return; doBackup(true); toast('자동 �
   const go = () => { if (done) return; done = true; setTimeout(autoBkNow, 600); };
   document.addEventListener('pointerup', go, { once: true, capture: true });
 })();
+
+/* ===== APK(Capacitor) 전용: 백업 파일 공유창 · 처음 실행 때 이전 데이터 가져오기 ===== */
+async function apkShare(text, name, quiet) {
+  const FS = nativePlug('Filesystem'), SH = nativePlug('Share');
+  try {
+    if (!FS || !SH) throw new Error('plugin');
+    await FS.writeFile({ path: name, data: text, directory: 'CACHE', encoding: 'utf8' });
+    const u = await FS.getUri({ path: name, directory: 'CACHE' });
+    await SH.share({ title: '가계부 백업', url: u.uri, dialogTitle: '백업 파일을 저장할 곳을 고르세요 (드라이브·내 파일 등)' });
+    if (!quiet) toast('백업 파일을 내보냈어요', 1800);
+  } catch (e) {
+    if (e && /cancel/i.test(String(e.message || e))) return;
+    toast('백업 파일을 내보내지 못했어요 · 구글 드라이브 백업을 써 주세요', 3000);
+  }
+  renderSettings && $('#setPanel') && renderSettings(); renderAll();
+}
+async function firstRunAsk() {
+  if (dbMeaningful(db)) return;
+  try { if (localStorage.getItem('gagyebu.wiped') || localStorage.getItem('gagyebu.firstask')) return; } catch (e) { return; }
+  try { if ((await safeAll()).some(x => dbMeaningful(safeParse(x.text)))) return; } catch (e) { }
+  try { localStorage.setItem('gagyebu.firstask', '1'); } catch (e) { }
+  askLink('이전에 쓰던 가계부 데이터가 있나요? 가져올 수 있어요. (나중에는 설정 → 복원 / 구글 드라이브 백업에서도 할 수 있어요)',
+    [{ k: 'file', label: '백업 파일(JSON)로 가져오기', cls: 'pri' }, { k: 'drive', label: '구글 드라이브에서 복원' }, { k: 'x', label: '새로 시작' }],
+    k => { if (k === 'file') { const f = $('#fileIn'); if (f) f.click(); } else if (k === 'drive') openDrive(); }, '이전 데이터');
+}
 const GS_CODE = "/**\n * 달력 가계부 — 구글 드라이브 백업용 Apps Script\n *\n * [설치 방법]\n * 1) https://script.google.com 에서 「새 프로젝트」를 만들고, 이 코드를 전부 붙여넣습니다.\n * 2) 아래 TOKEN 을 나만 아는 긴 문자열로 바꿉니다. (앱의 「비밀키」 칸에 똑같이 입력)\n * 3) 위쪽 함수 선택에서 authorize 를 고르고 ▶ 실행 → 권한 허용 (드라이브 접근)\n * 4) 오른쪽 위 「배포」 → 「새 배포」 → 유형 「웹 앱」\n *      · 다음 사용자로 실행: 나\n *      · 액세스 권한이 있는 사용자: 모든 사용자\n *    → 배포 후 나오는 「웹 앱 URL」(…/exec)을 앱의 「웹앱 URL」 칸에 붙여넣습니다.\n * 5) 코드를 고쳤다면 「배포 관리 → 수정 → 새 버전」으로 다시 배포해야 반영됩니다.\n *\n * [동작]\n * - 드라이브의 「가계부 백업」 폴더에 파일 1개(FILE_NAME)만 두고, 백업할 때마다 그 파일을 덮어씁니다.\n * - 드라이브가 파일의 이전 버전을 일정 기간 보관하므로(파일 → 마우스 오른쪽 → 버전 관리) 예전 상태도 찾을 수 있어요.\n * - 내역이 하나도 없는 빈 데이터로는 덮어쓰지 않습니다.\n */\n\nvar TOKEN = '여기에-나만-아는-긴-비밀키를-입력';\nvar FOLDER_NAME = '가계부 백업';\nvar FILE_NAME = 'gagyebu-backup.json';\nvar MAX_BYTES = 20 * 1024 * 1024;\n\n/** 처음 한 번 실행해서 권한을 허용하는 용도 */\nfunction authorize() {\n  folder_();\n  Logger.log('권한 확인 완료');\n}\n\nfunction doGet(e) { return respond_(route_((e && e.parameter) || {}, null)); }\nfunction doPost(e) {\n  var body = {};\n  try { body = JSON.parse((e.postData && e.postData.contents) || '{}'); } catch (err) { return respond_({ ok: false, error: '잘못된 요청(JSON)' }); }\n  return respond_(route_((e && e.parameter) || {}, body));\n}\nfunction respond_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }\n\nfunction route_(params, body) {\n  var src = body || params;\n  if (!TOKEN || TOKEN.indexOf('여기에') === 0) return { ok: false, error: '스크립트의 TOKEN 을 먼저 바꿔 주세요' };\n  if (String(src.token || params.token || '') !== TOKEN) return { ok: false, error: '비밀키가 맞지 않아요' };\n  var action = String(src.action || params.action || 'ping');\n  try {\n    if (action === 'ping') return { ok: true, time: Date.now(), info: info_() };\n    if (action === 'get') return get_();\n    if (action === 'put') return put_(body || {});\n    return { ok: false, error: '알 수 없는 요청: ' + action };\n  } catch (err) {\n    return { ok: false, error: String((err && err.message) || err) };\n  }\n}\n\nfunction folder_() {\n  var it = DriveApp.getFoldersByName(FOLDER_NAME);\n  return it.hasNext() ? it.next() : DriveApp.createFolder(FOLDER_NAME);\n}\nfunction file_() {\n  var it = folder_().getFilesByName(FILE_NAME);\n  return it.hasNext() ? it.next() : null;\n}\nfunction read_(f) {\n  try { var o = JSON.parse(f.getBlob().getDataAsString('UTF-8')); if (o && typeof o === 'object') return o; } catch (e) { }\n  return null;\n}\nfunction info_() {\n  var f = file_(); if (!f) return null;\n  var o = read_(f); if (!o) return null;\n  return { ts: o.ts || 0, n: o.n || 0, e: o.e || 0, ver: o.ver || '' };\n}\nfunction get_() {\n  var f = file_(); if (!f) return { ok: true, empty: true };\n  var o = read_(f); if (!o || !o.data) return { ok: true, empty: true };\n  return { ok: true, ts: o.ts || 0, n: o.n || 0, e: o.e || 0, ver: o.ver || '', data: o.data };\n}\nfunction put_(b) {\n  if (typeof b.data !== 'string' || !b.data) return { ok: false, error: '보낼 데이터가 없어요' };\n  if (b.data.length > MAX_BYTES) return { ok: false, error: '데이터가 너무 커요' };\n  var d; try { d = JSON.parse(b.data); } catch (e) { return { ok: false, error: '데이터 형식이 올바르지 않아요' }; }\n  var n = (d.tx || []).length, ev = (d.events || []).length;\n  if (!n && !ev) return { ok: false, error: '빈 데이터로는 덮어쓰지 않아요' };\n  var box = JSON.stringify({ app: 'gagyebu', ts: Date.now(), n: n, e: ev, ver: String(b.ver || ''), data: b.data });\n  var lock = LockService.getScriptLock(); lock.waitLock(20000);\n  try {\n    var f = file_();\n    if (f) f.setContent(box); else folder_().createFile(FILE_NAME, box, 'application/json');\n  } finally { lock.releaseLock(); }\n  return { ok: true, ts: Date.now(), n: n, e: ev };\n}\n";
 /* ===== 달력 가계부 · 구글 드라이브 백업 (Apps Script 웹앱, 파일 1개 덮어쓰기) ===== */
 const DRV_KEY = 'gagyebu.drive';
@@ -3024,7 +3054,7 @@ async function drvBoot() {
   });
   bindRestore();
   lockNow();
-  try { safeCheck(); } catch (e) { }
+  try { safeCheck().then(() => firstRunAsk()).catch(() => { }); } catch (e) { }
   try { drvBoot(); } catch (e) { }
   try { if (window.safeMirror && dbMeaningful(db)) window.safeMirror(); } catch (e) { }
   renderAll();
@@ -3033,7 +3063,7 @@ async function drvBoot() {
     const u = localStorage.getItem('gagyebu.upd');
     if (u) { localStorage.removeItem('gagyebu.upd'); setTimeout(() => toast(u === APP_VERSION ? `v${APP_VERSION}로 업데이트됐어요` : `업데이트를 불러오지 못했어요 (현재 v${APP_VERSION})`, 4000), 400); }
   } catch (e) { }
-  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  if (!isApk() && 'serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => { });
   }
   /* 뒤로가기: 열린 창 → 아래 시트 → 종료 확인 순서로 */
@@ -3046,7 +3076,7 @@ async function drvBoot() {
       if (ms.length) { const top = ms[ms.length - 1]; const x = top.querySelector('.ph .x'); if (x) x.click(); else closeModal(top); return; }
       if (ST.multi) { multiExit(); return; }
       if (document.body.classList.contains('sheet-open') || document.body.classList.contains('sheet-full')) { ST.sheet = 'closed'; renderSheet(); return; }
-      askLink('앱을 종료할까요?', [{ k: 'exit', label: '나가기', cls: 'dan' }, { k: 'stay', label: '계속 사용', cls: 'pri' }], k => { if (k === 'exit') { window.__leaving = true; history.go(-2); } });
+      askLink('앱을 종료할까요?', [{ k: 'exit', label: '나가기', cls: 'dan' }, { k: 'stay', label: '계속 사용', cls: 'pri' }], k => { if (k === 'exit') { const A = nativePlug('App'); if (isApk() && A && A.exitApp) { A.exitApp(); return; } window.__leaving = true; history.go(-2); } });
     });
   } catch (e) { }
   /* 자정이 지나 앱이 다시 보일 때 오늘 날짜 갱신 */
