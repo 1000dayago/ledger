@@ -574,7 +574,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.11.1';
+const APP_VERSION = '2.12.0';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -607,7 +607,7 @@ function compact(n) {
 }
 
 /* ---------- 기본 데이터 ---------- */
-const DEFAULT_SETTINGS = { baseDay: 25, nameBy: 'end', showHoliday: true, heat: true, mode: 'out', cont: false, fixView: 'all', catsV: 2, hideSum: false, heroMin: false, limitMode: 'net', limitManual: 0, showLimit: true };
+const DEFAULT_SETTINGS = { baseDay: 25, nameBy: 'end', showHoliday: true, heat: true, mode: 'out', cont: false, fixView: 'all', catsV: 2, hideSum: false, heroMin: false, limitMode: 'net', limitManual: 0, showLimit: true, autoBk: 'week' };
 const DEFAULT_CATS = [
   { id: 'food', name: '음식', icon: '🍚', type: 'out', subs: ['식당', '배달', '장보기', '간식'] },
   { id: 'cafe', name: '카페', icon: '☕', type: 'out', subs: [] },
@@ -685,7 +685,7 @@ function adopt(o) {
   db = d;
 }
 function saveDB() {
-  try { localStorage.setItem(DB_KEY, JSON.stringify(db)); return true; }
+  try { localStorage.setItem(DB_KEY, JSON.stringify(db)); try { if (window.safeMirror) window.safeMirror(); } catch (e) { } return true; }
   catch (e) { return false; }
 }
 const newId = p => p + (db.nextId++);
@@ -2195,6 +2195,8 @@ function openSettings() {
     else if (v === 'name') { S().nameBy = b.dataset.v; persist(); ST.key = keyOf(ST.sel || todayStr()); renderSettings(); }
     else if (v === 'hol') { S().showHoliday = !S().showHoliday; persist(); renderSettings(); }
     else if (v === 'lim') { S().limitMode = b.dataset.v; persist(); renderSettings(); }
+    else if (v === 'autobk') { S().autoBk = b.dataset.v; persist(); renderSettings(); }
+    else if (v === 'safelist') openSafeList();
     else if (v === 'pin') pinToggle();
     else if (v === 'pinchg') pinChange();
     else if (v === 'pinafter') pinAfter(b.dataset.v);
@@ -2247,18 +2249,20 @@ function renderSettings() {
     <div class="list-item"><div class="m">앱 잠금${pinOn() ? ` (${lockMode(pinCfg()) === 'pat' ? '패턴' : '6자리'})` : ''}<small>${pinOn() && lockMode(pinCfg()) === 'pat' ? '앱을 열 때 패턴을 그리면 바로 열려요' : '숫자 6개 또는 패턴으로 앱을 잠가요'}</small></div>${sw(pinOn(), 'pin')}</div>
     ${pinOn() ? `<div class="row"><label style="width:80px">잠금 시점</label><div class="seg">${[[0, '나가면 즉시'], [60, '1분 뒤'], [300, '5분 뒤']].map(([v, n]) => `<button data-s="pinafter" data-v="${v}" class="${(pinCfg().after || 0) === v ? 'on' : ''}">${n}</button>`).join('')}</div><span class="sp"></span><button class="btn" data-s="pinchg">방식·암호 변경</button></div>` : ''}
     <div class="kv"><span>내역 ${db.tx.length}건</span><span>마지막 백업 ${db.lastBackup || '없음'}</span></div>
+    <div class="row"><label style="width:80px">자동 백업</label><div class="seg">${[['off', '끔'], ['day', '매일'], ['week', '주 1회']].map(([v, n]) => `<button data-s="autobk" data-v="${v}" class="${(S().autoBk || 'week') === v ? 'on' : ''}">${n}</button>`).join('')}</div><span class="sp"></span><button class="btn" data-s="safelist">자동 보관본</button></div>
+    <div class="hint" style="margin:0 0 6px">저장할 때마다 폰 안에 복사본을 두고, 정해진 주기로 앱을 열면 백업 파일을 다운로드 폴더에 저장해요.</div>
     <div class="btns"><button class="btn pri" data-s="backup">백업 저장</button><button class="btn" data-s="restore">복원</button><button class="btn" data-s="upd">업데이트 확인</button><span class="sp"></span><button class="btn dan" data-s="resetmenu"><svg class="lkic" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 3-6.2 M4 4v4h4"/></svg> 초기화</button></div>
     <div class="hint">버전 ${APP_VERSION} · 백업 파일은 폰의 다운로드 폴더에 저장돼요. 폰을 바꾸거나 브라우저 데이터를 지우기 전에 꼭 백업하세요.</div>
   </div>`;
 }
-function doBackup() {
+function doBackup(quiet) {
   const text = exportJSON();
   const blob = new Blob([text], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   const t = todayStr().replace(/-/g, '');
   a.download = `gagyebu-${t}.json`; document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
-  toast('백업 파일을 저장했어요'); renderSettings(); renderAll();
+  if (!quiet) toast('백업 파일을 저장했어요'); renderSettings(); renderAll();
 }
 function openReset() {
   const m = openModal(`<div class="ph"><b>초기화</b><span class="sp"></span><button class="x" data-r="x">✕</button></div>
@@ -2767,6 +2771,82 @@ function pinAfter(sec) { const c = pinCfg(); if (!c) return; c.after = +sec; pin
     else if (hiddenAt && (Date.now() - hiddenAt) / 1000 >= (c.after || 0)) { hiddenAt = 0; lockNow(); }
   });
 })();
+/* ===== 달력 가계부 · 자동 보관 (IndexedDB 복사본 + 주기적 백업 파일) ===== */
+const SAFE_DB = 'gagyebu-safe', SAFE_ST = 'snap';
+function safeOpen() {
+  return new Promise((res, rej) => {
+    try {
+      const r = indexedDB.open(SAFE_DB, 1);
+      r.onupgradeneeded = () => r.result.createObjectStore(SAFE_ST, { keyPath: 'k' });
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    } catch (e) { rej(e); }
+  });
+}
+const safeTx = (mode, fn) => safeOpen().then(d => new Promise((res, rej) => {
+  const t = d.transaction(SAFE_ST, mode), s = t.objectStore(SAFE_ST), out = fn(s);
+  t.oncomplete = () => { d.close(); res(out && out.result); }; t.onerror = t.onabort = () => { d.close(); rej(t.error); };
+}));
+const safePut = o => safeTx('readwrite', s => s.put(o));
+const safeAll = () => safeTx('readonly', s => s.getAll());
+const safeDel = k => safeTx('readwrite', s => s.delete(k));
+const dbMeaningful = d => !!d && ((d.tx || []).length > 0 || (d.events || []).length > 0);
+
+/* 저장할 때마다(1.5초 모아서) 복사본을 둔다. 빈 데이터는 덮어쓰지 않는다. 날짜별 보관본은 최근 7개 */
+let safeTimer = 0;
+window.safeMirror = function () {
+  clearTimeout(safeTimer);
+  safeTimer = setTimeout(async () => {
+    if (!dbMeaningful(db)) return;
+    try {
+      const text = JSON.stringify(db), t = todayStr(), meta = { ts: Date.now(), n: db.tx.length, e: db.events.length, text };
+      await safePut({ k: 'latest', ...meta });
+      await safePut({ k: 'day-' + t, ...meta });
+      const days = (await safeAll()).filter(x => x.k.startsWith('day-')).map(x => x.k).sort();
+      for (const k of days.slice(0, Math.max(0, days.length - 7))) await safeDel(k);
+    } catch (e) { }
+  }, 1500);
+};
+
+/* 앱을 열 때: 가계부가 비어 있는데 보관본이 있으면 복원을 권한다 */
+async function safeCheck() {
+  if (dbMeaningful(db)) return;
+  let list = []; try { list = (await safeAll()).filter(x => dbMeaningful(safeParse(x.text))); } catch (e) { return; }
+  if (!list.length) return;
+  const best = list.sort((a, b) => b.ts - a.ts)[0], d = new Date(best.ts);
+  askLink(`저장된 가계부가 비어 있어요.\n자동 보관본이 있어요 (${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} · 내역 ${best.n}건). 복원할까요?`,
+    [{ k: 'yes', label: '복원하기', cls: 'pri' }, { k: 'x', label: '나중에' }], k => { if (k === 'yes') safeRestore(best); }, '데이터 복원');
+}
+function safeParse(t) { try { return JSON.parse(t); } catch (e) { return null; } }
+function safeRestore(x) {
+  try { adopt(JSON.parse(x.text)); saveDB(); ST.key = keyOf(todayStr()); ST.sel = null; ST.sheet = 'closed'; renderAll(); toast(`복원했어요 · 내역 ${x.n}건`, 2500); if ($('#setPanel')) renderSettings(); }
+  catch (e) { toast('복원하지 못했어요'); }
+}
+async function openSafeList() {
+  let list = []; try { list = (await safeAll()).filter(x => dbMeaningful(safeParse(x.text))).sort((a, b) => b.ts - a.ts); } catch (e) { }
+  const f = x => { const d = new Date(x.ts); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+  const m = openModal(`<div class="ph"><b>자동 보관본</b><span class="sp"></span><button class="x" data-sf="x">✕</button></div>
+  <div class="pb"><div class="hint" style="margin:0 0 8px">저장할 때마다 폰 안에 한 번 더 복사해 둬요. 날짜별로 최근 7일치를 보관해요.</div>
+  ${list.length ? list.map(x => `<div class="list-item"><div class="m">${x.k === 'latest' ? '가장 최근' : x.k.slice(4)}<small>${f(x)} · 내역 ${x.n}건 · 일정 ${x.e}건</small></div><button class="btn" data-sf="${x.k}">복원</button></div>`).join('') : '<div class="empty">아직 보관본이 없어요</div>'}</div>`);
+  m.addEventListener('click', e => {
+    const b = e.target.closest('[data-sf]'); if (!b) return;
+    if (b.dataset.sf === 'x') { closeModal(m); return; }
+    const x = list.find(i => i.k === b.dataset.sf); if (!x) return;
+    askLink(`지금 가계부를 이 보관본(${f(x)}, 내역 ${x.n}건)으로 바꿀까요? 지금 데이터는 사라져요.`, [{ k: 'yes', label: '복원', cls: 'dan' }, { k: 'x', label: '취소' }], k => { if (k === 'yes') { closeModal(m); safeRestore(x); } }, '복원 확인');
+  });
+}
+
+/* 주기적 백업 파일: 앱을 연 뒤 첫 터치 때(다운로드는 터치 직후에만 허용돼요) 기간이 지났으면 저장 */
+function autoBkDue() {
+  const mode = S().autoBk || 'week'; if (mode === 'off' || !db.tx.length) return false;
+  const age = db.lastBackup ? daysBetween(db.lastBackup, todayStr()) : 999;
+  return age >= (mode === 'day' ? 1 : 7);
+}
+function autoBkNow() { if (!autoBkDue()) return; doBackup(true); toast('자동 백업 파일을 다운로드 폴더에 저장했어요', 2600); }
+(function () {
+  let done = false;
+  const go = () => { if (done) return; done = true; setTimeout(autoBkNow, 600); };
+  document.addEventListener('pointerup', go, { once: true, capture: true });
+})();
 /* ===== 달력 가계부 · 시작 ===== */
 (function boot() {
   loadDB();
@@ -2779,6 +2859,8 @@ function pinAfter(sec) { const c = pinCfg(); if (!c) return; c.after = +sec; pin
   });
   bindRestore();
   lockNow();
+  try { safeCheck(); } catch (e) { }
+  try { if (window.safeMirror && dbMeaningful(db)) window.safeMirror(); } catch (e) { }
   renderAll();
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { }
   try {
