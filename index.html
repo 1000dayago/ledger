@@ -564,6 +564,9 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 .lk-pat .pd{stroke:color-mix(in srgb,var(--sub) 30%,transparent)}
 .lk-pat .pd.on{fill:color-mix(in srgb,var(--sub) 22%,transparent);stroke:color-mix(in srgb,var(--sub) 30%,transparent)}
 .lk-pat .pl{stroke:color-mix(in srgb,var(--sub) 22%,transparent)}
+
+/* v2.13 드라이브 */
+.dvsteps{margin:4px 0 6px;padding-left:20px;font-size:13px;line-height:1.6;color:var(--sub)}.dvsteps b{color:var(--ink)}
 </style>
 </head>
 <body>
@@ -574,7 +577,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.12.1';
+const APP_VERSION = '2.13.0';
 const DB_KEY = 'gagyebu.db.v1';
 
 /* ---------- 날짜 유틸 (문자열 YYYY-MM-DD, UTC 기준 계산) ---------- */
@@ -689,7 +692,7 @@ function adopt(o) {
   db = d;
 }
 function saveDB() {
-  try { localStorage.setItem(DB_KEY, JSON.stringify(db)); try { if (window.safeMirror) window.safeMirror(); } catch (e) { } return true; }
+  try { localStorage.setItem(DB_KEY, JSON.stringify(db)); try { if (window.safeMirror) window.safeMirror(); if (window.drvSoon) window.drvSoon(); } catch (e) { } return true; }
   catch (e) { return false; }
 }
 const newId = p => p + (db.nextId++);
@@ -1519,8 +1522,9 @@ function openInput(opts = {}) {
   const st = edit
     ? { type: edit.type, date: edit.date, name: edit.name || '', cat: edit.cat, sub: edit.sub || '', kind: edit.kind || 'var', manual: true, lk: edit.lk || '', cnt: !!edit.cnt }
     : { lk: opts.lk || '', cnt: false, type: opts.type || 'out', date: opts.date || defaultInputDate(), name: opts.name || '', cat: opts.cat || null, sub: '', kind: 'var', manual: !!opts.cat };
-  st.mode = edit ? (isComb() ? 'both' : 'tx') : (opts.mode || 'tx');
-  st.evType = linkedEv ? linkedEv.type : 'etc'; st.evSame = linkedEv ? linkedEv.date === edit.date : true;
+  const serEv = occEv && occEv.cal === 'solar' ? occEv : null;   /* 반복 일정의 한 회차: 일정 칸에 반복 설정을 보여 주고 고치면 전체에 적용 */
+  st.mode = edit ? (isComb() || serEv ? 'both' : 'tx') : (opts.mode || 'tx');
+  st.evType = linkedEv ? linkedEv.type : serEv ? serEv.type : 'etc'; st.evSame = linkedEv ? linkedEv.date === edit.date : !serEv;
   const m = openModal(`
   <div class="ph"><div class="seg" id="iSeg"><button data-t="out">지출</button><button data-t="in">수입</button></div>${edit ? '' : `<div class="modes" id="iModes"></div>`}<b>${edit ? '내역 수정' : ''}</b><span class="sp"></span><button class="x" data-i="x">✕</button></div>
   <div class="pb">
@@ -1556,6 +1560,13 @@ function openInput(opts = {}) {
   q('#iAmount').value = edit ? fmt(edit.amount) : (opts.amount ? fmt(opts.amount) : '');
   q('#iName').value = st.name; q('#iDate').value = st.date;
   if (linkedEv) { q('#iEvT').value = linkedEv.title; q('#iEvD').value = linkedEv.date; q('#iEvSame').checked = st.evSame; }
+  if (serEv) {
+    q('#iEvT').value = serEv.title; q('#iEvD').value = serEv.date; q('#iEvSame').checked = false;
+    q('#iEvSame').closest('.row').classList.add('hide');
+    const n = document.createElement('div'); n.className = 'hint'; n.style.cssText = 'margin:-2px 0 6px';
+    n.textContent = `반복 일정 전체 설정이에요 (시작 ${shortMD(serEv.date)}) · 여기서 바꾸면 모든 회차에 적용돼요. 금액은 이 회차만 바뀌어요.`;
+    q('#iEv .parthd').after(n);
+  }
 
   function paintType() {
     $$('#iSeg button', m).forEach(b => b.classList.toggle('on', b.dataset.t === st.type));
@@ -1610,7 +1621,7 @@ function openInput(opts = {}) {
     q('#iEvWrap').classList.toggle('hide', st.mode !== 'both');
     q('#iEvD').classList.toggle('hide', st.evSame);
   }
-  if (linkedEv) { q('#iEvRep').value = linkedEv.repeat || 'none'; q('#iEvUn').value = linkedEv.until || ''; st.evWd = (linkedEv.wd || []).slice(); }
+  { const sEv = linkedEv || serEv; if (sEv) { q('#iEvRep').value = sEv.repeat || 'none'; q('#iEvUn').value = sEv.until || ''; st.evWd = (sEv.wd || []).slice(); } }
   const evWdOf = d => (st.evWd && st.evWd.length ? st.evWd : [dow(d)]);
   const repUi = () => {
     const r = q('#iEvRep').value, d = (st.evSame ? q('#iDate').value : q('#iEvD').value) || st.date;
@@ -1711,6 +1722,9 @@ function openInput(opts = {}) {
           if (linkedEv.until) linkedEv.until = addDays(linkedEv.until, dl);
           linkedEv.repeat = q('#iEvRep').value; linkedEv.until = linkedEv.repeat === 'none' ? '' : q('#iEvUn').value; linkedEv.wd = linkedEv.repeat === 'weekly' ? evWdOf(nd) : [];
           linkedEv.date = nd; linkedEv.type = st.evType; linkedEv.title = q('#iEvT').value.trim() || linkedEv.title;
+        } else if (serEv) {
+          serEv.title = q('#iEvT').value.trim() || serEv.title; serEv.type = st.evType;
+          serEv.repeat = q('#iEvRep').value; serEv.until = serEv.repeat === 'none' ? '' : q('#iEvUn').value; serEv.wd = serEv.repeat === 'weekly' ? evWdOf(serEv.date) : [];
         }
       } else { tx = { id: newId('t'), order: Date.now(), ...rec }; db.tx.push(tx); }
       if ((!edit || st.addEv) && st.mode === 'both') {
@@ -2201,6 +2215,7 @@ function openSettings() {
     else if (v === 'lim') { S().limitMode = b.dataset.v; persist(); renderSettings(); }
     else if (v === 'autobk') { S().autoBk = b.dataset.v; persist(); renderSettings(); }
     else if (v === 'safelist') openSafeList();
+    else if (v === 'drive') openDrive();
     else if (v === 'pin') pinToggle();
     else if (v === 'pinchg') pinChange();
     else if (v === 'pinafter') pinAfter(b.dataset.v);
@@ -2253,13 +2268,15 @@ function renderSettings() {
     <div class="list-item"><div class="m">앱 잠금${pinOn() ? ` (${lockMode(pinCfg()) === 'pat' ? '패턴' : '6자리'})` : ''}<small>${pinOn() && lockMode(pinCfg()) === 'pat' ? '앱을 열 때 패턴을 그리면 바로 열려요' : '숫자 6개 또는 패턴으로 앱을 잠가요'}</small></div>${sw(pinOn(), 'pin')}</div>
     ${pinOn() ? `<div class="row"><label style="width:80px">잠금 시점</label><div class="seg">${[[0, '나가면 즉시'], [60, '1분 뒤'], [300, '5분 뒤']].map(([v, n]) => `<button data-s="pinafter" data-v="${v}" class="${(pinCfg().after || 0) === v ? 'on' : ''}">${n}</button>`).join('')}</div><span class="sp"></span><button class="btn" data-s="pinchg">방식·암호 변경</button></div>` : ''}
     <div class="kv"><span>내역 ${db.tx.length}건</span><span>마지막 백업 ${db.lastBackup || '없음'}</span></div>
-    <div class="row"><label style="width:80px">자동 백업</label><div class="seg">${[['off', '끔'], ['day', '매일'], ['week', '주 1회']].map(([v, n]) => `<button data-s="autobk" data-v="${v}" class="${(S().autoBk || 'week') === v ? 'on' : ''}">${n}</button>`).join('')}</div><span class="sp"></span><button class="btn" data-s="safelist">자동 보관본</button></div>
-    <div class="hint" style="margin:0 0 6px">저장할 때마다 폰 안에 복사본을 두고, 정해진 주기로 앱을 열면 백업 파일을 다운로드 폴더에 저장해요.</div>
+    <div class="list-item" data-s="drive" style="cursor:pointer"><div class="m">구글 드라이브 백업<small id="drvLine">${esc(drvLine())}</small></div><button class="btn" data-s="drive">${drvOn() ? '관리' : '연결'}</button></div>
+    <div class="row"><label style="width:80px">자동 백업</label><div class="seg">${[['off', '끔'], ['day', '매일'], ['week', '주 1회'], ['month', '월 1회']].map(([v, n]) => `<button data-s="autobk" data-v="${v}" class="${(S().autoBk || 'week') === v ? 'on' : ''}">${n}</button>`).join('')}</div><span class="sp"></span><button class="btn" data-s="safelist">자동 보관본</button></div>
+    <div class="hint" style="margin:0 0 6px">저장할 때마다 폰 안에 복사본을 두고, 정해진 주기가 지났고 바뀐 내용이 있으면 앱을 열 때 백업 파일을 다운로드 폴더에 저장해요.</div>
     <div class="btns"><button class="btn pri" data-s="backup">백업 저장</button><button class="btn" data-s="restore">복원</button><button class="btn" data-s="upd">업데이트 확인</button><span class="sp"></span><button class="btn dan" data-s="resetmenu"><svg class="lkic" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 3-6.2 M4 4v4h4"/></svg> 초기화</button></div>
     <div class="hint">버전 ${APP_VERSION} · 백업 파일은 폰의 다운로드 폴더에 저장돼요. 폰을 바꾸거나 브라우저 데이터를 지우기 전에 꼭 백업하세요.</div>
   </div>`;
 }
 function doBackup(quiet) {
+  try { S().bkSig = dataSig(); } catch (e) { }
   const text = exportJSON();
   const blob = new Blob([text], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
@@ -2303,8 +2320,8 @@ async function doUpdate() {
   if (latest === APP_VERSION) { toast(`최신 버전이에요 (v${APP_VERSION})`, 2600); return; }
   try { localStorage.setItem('gagyebu.upd', latest); } catch (e) { }
   try {
-    if ('caches' in window) await Promise.all((await caches.keys()).map(k => caches.delete(k)));
-    if (navigator.serviceWorker) { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(x => x.unregister())); }
+    if ('caches' in window) await Promise.all((await caches.keys()).filter(k => k.startsWith('gagyebu-')).map(k => caches.delete(k)));   /* 같은 주소의 다른 앱(마인드맵) 캐시는 건드리지 않아요 */
+    if (navigator.serviceWorker) { const mine = new URL('./', location.href).href, regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.filter(x => x.scope === mine).map(x => x.unregister())); }
   } catch (e) { }
   toast(`v${latest}로 업데이트해요`, 1200); setTimeout(() => location.reload(), 700);
 }
@@ -2846,8 +2863,9 @@ async function openSafeList() {
 /* 주기적 백업 파일: 앱을 연 뒤 첫 터치 때(다운로드는 터치 직후에만 허용돼요) 기간이 지났으면 저장 */
 function autoBkDue() {
   const mode = S().autoBk || 'week'; if (mode === 'off' || !db.tx.length) return false;
+  if (S().bkSig && S().bkSig === dataSig()) return false;   /* 지난 백업 이후 바뀐 게 없으면 파일을 만들지 않아요 */
   const age = db.lastBackup ? daysBetween(db.lastBackup, todayStr()) : 999;
-  return age >= (mode === 'day' ? 1 : 7);
+  return age >= ({ day: 1, week: 7, month: 30 }[mode] || 7);
 }
 function autoBkNow() { if (!autoBkDue()) return; doBackup(true); toast('자동 백업 파일을 다운로드 폴더에 저장했어요', 2600); }
 (function () {
@@ -2855,6 +2873,145 @@ function autoBkNow() { if (!autoBkDue()) return; doBackup(true); toast('자동 �
   const go = () => { if (done) return; done = true; setTimeout(autoBkNow, 600); };
   document.addEventListener('pointerup', go, { once: true, capture: true });
 })();
+const GS_CODE = "/**\n * 달력 가계부 — 구글 드라이브 백업용 Apps Script\n *\n * [설치 방법]\n * 1) https://script.google.com 에서 「새 프로젝트」를 만들고, 이 코드를 전부 붙여넣습니다.\n * 2) 아래 TOKEN 을 나만 아는 긴 문자열로 바꿉니다. (앱의 「비밀키」 칸에 똑같이 입력)\n * 3) 위쪽 함수 선택에서 authorize 를 고르고 ▶ 실행 → 권한 허용 (드라이브 접근)\n * 4) 오른쪽 위 「배포」 → 「새 배포」 → 유형 「웹 앱」\n *      · 다음 사용자로 실행: 나\n *      · 액세스 권한이 있는 사용자: 모든 사용자\n *    → 배포 후 나오는 「웹 앱 URL」(…/exec)을 앱의 「웹앱 URL」 칸에 붙여넣습니다.\n * 5) 코드를 고쳤다면 「배포 관리 → 수정 → 새 버전」으로 다시 배포해야 반영됩니다.\n *\n * [동작]\n * - 드라이브의 「가계부 백업」 폴더에 파일 1개(FILE_NAME)만 두고, 백업할 때마다 그 파일을 덮어씁니다.\n * - 드라이브가 파일의 이전 버전을 일정 기간 보관하므로(파일 → 마우스 오른쪽 → 버전 관리) 예전 상태도 찾을 수 있어요.\n * - 내역이 하나도 없는 빈 데이터로는 덮어쓰지 않습니다.\n */\n\nvar TOKEN = '여기에-나만-아는-긴-비밀키를-입력';\nvar FOLDER_NAME = '가계부 백업';\nvar FILE_NAME = 'gagyebu-backup.json';\nvar MAX_BYTES = 20 * 1024 * 1024;\n\n/** 처음 한 번 실행해서 권한을 허용하는 용도 */\nfunction authorize() {\n  folder_();\n  Logger.log('권한 확인 완료');\n}\n\nfunction doGet(e) { return respond_(route_((e && e.parameter) || {}, null)); }\nfunction doPost(e) {\n  var body = {};\n  try { body = JSON.parse((e.postData && e.postData.contents) || '{}'); } catch (err) { return respond_({ ok: false, error: '잘못된 요청(JSON)' }); }\n  return respond_(route_((e && e.parameter) || {}, body));\n}\nfunction respond_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }\n\nfunction route_(params, body) {\n  var src = body || params;\n  if (!TOKEN || TOKEN.indexOf('여기에') === 0) return { ok: false, error: '스크립트의 TOKEN 을 먼저 바꿔 주세요' };\n  if (String(src.token || params.token || '') !== TOKEN) return { ok: false, error: '비밀키가 맞지 않아요' };\n  var action = String(src.action || params.action || 'ping');\n  try {\n    if (action === 'ping') return { ok: true, time: Date.now(), info: info_() };\n    if (action === 'get') return get_();\n    if (action === 'put') return put_(body || {});\n    return { ok: false, error: '알 수 없는 요청: ' + action };\n  } catch (err) {\n    return { ok: false, error: String((err && err.message) || err) };\n  }\n}\n\nfunction folder_() {\n  var it = DriveApp.getFoldersByName(FOLDER_NAME);\n  return it.hasNext() ? it.next() : DriveApp.createFolder(FOLDER_NAME);\n}\nfunction file_() {\n  var it = folder_().getFilesByName(FILE_NAME);\n  return it.hasNext() ? it.next() : null;\n}\nfunction read_(f) {\n  try { var o = JSON.parse(f.getBlob().getDataAsString('UTF-8')); if (o && typeof o === 'object') return o; } catch (e) { }\n  return null;\n}\nfunction info_() {\n  var f = file_(); if (!f) return null;\n  var o = read_(f); if (!o) return null;\n  return { ts: o.ts || 0, n: o.n || 0, e: o.e || 0, ver: o.ver || '' };\n}\nfunction get_() {\n  var f = file_(); if (!f) return { ok: true, empty: true };\n  var o = read_(f); if (!o || !o.data) return { ok: true, empty: true };\n  return { ok: true, ts: o.ts || 0, n: o.n || 0, e: o.e || 0, ver: o.ver || '', data: o.data };\n}\nfunction put_(b) {\n  if (typeof b.data !== 'string' || !b.data) return { ok: false, error: '보낼 데이터가 없어요' };\n  if (b.data.length > MAX_BYTES) return { ok: false, error: '데이터가 너무 커요' };\n  var d; try { d = JSON.parse(b.data); } catch (e) { return { ok: false, error: '데이터 형식이 올바르지 않아요' }; }\n  var n = (d.tx || []).length, ev = (d.events || []).length;\n  if (!n && !ev) return { ok: false, error: '빈 데이터로는 덮어쓰지 않아요' };\n  var box = JSON.stringify({ app: 'gagyebu', ts: Date.now(), n: n, e: ev, ver: String(b.ver || ''), data: b.data });\n  var lock = LockService.getScriptLock(); lock.waitLock(20000);\n  try {\n    var f = file_();\n    if (f) f.setContent(box); else folder_().createFile(FILE_NAME, box, 'application/json');\n  } finally { lock.releaseLock(); }\n  return { ok: true, ts: Date.now(), n: n, e: ev };\n}\n";
+/* ===== 달력 가계부 · 구글 드라이브 백업 (Apps Script 웹앱, 파일 1개 덮어쓰기) ===== */
+const DRV_KEY = 'gagyebu.drive';
+const drvCfg = () => { try { return JSON.parse(localStorage.getItem(DRV_KEY) || 'null') || {}; } catch (e) { return {}; } };
+const drvOn = () => { const c = drvCfg(); return !!(c.url && c.token); };
+function drvSave(c) {
+  try { localStorage.setItem(DRV_KEY, JSON.stringify(c)); } catch (e) { }
+  try { if (c.url && c.token) safePut({ k: 'drive', url: c.url, token: c.token }); else safeDel('drive'); } catch (e) { }   /* 연결 정보도 폰 안 복사본에 */
+}
+/* 내용이 바뀌었는지 비교하기 위한 짧은 지문 */
+function dataSig() {
+  const s = JSON.stringify([db.tx, db.events, db.recv, db.cats, db.evTypes, db.evOver]);
+  let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return s.length + ':' + (h >>> 0).toString(36);
+}
+async function drvCall(action, body, cfg) {
+  const c = cfg || drvCfg(), url = String(c.url || '').trim();
+  if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)) throw new Error('웹앱 URL이 올바르지 않아요 (https://script.google.com/…/exec)');
+  const ctrl = new AbortController(), tm = setTimeout(() => ctrl.abort(), 40000);
+  try {
+    const r = await fetch(url, { method: 'POST', body: JSON.stringify(Object.assign({ token: c.token, action }, body || {})), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, signal: ctrl.signal, redirect: 'follow' });
+    const t = await r.text(); let j;
+    try { j = JSON.parse(t); } catch (e) { throw new Error('응답을 읽지 못했어요 · 웹앱 URL(…/exec)과 「액세스: 모든 사용자」 배포를 확인해 주세요'); }
+    if (!j.ok) throw new Error(j.error || '실패했어요');
+    return j;
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error('응답 시간이 초과됐어요');
+    if (e instanceof TypeError) throw new Error('인터넷에 연결할 수 없어요');
+    throw e;
+  } finally { clearTimeout(tm); }
+}
+let drvBusy = false, drvTimer = 0;
+async function drvPush(manual) {
+  if (!drvOn() || drvBusy) return false;
+  if (!dbMeaningful(db)) { if (manual) toast('내역이 없어서 올리지 않았어요'); return false; }
+  const sig = dataSig(), c = drvCfg();
+  if (!manual && c.sig === sig) return true;
+  drvBusy = true; drvPaint();
+  try {
+    const r = await drvCall('put', { data: JSON.stringify(db), ver: APP_VERSION });
+    const c2 = drvCfg(); c2.sig = sig; c2.last = { ts: r.ts, n: r.n }; c2.err = ''; drvSave(c2);
+    if (manual) toast('구글 드라이브에 백업했어요', 1600);
+    return true;
+  } catch (e) {
+    const c2 = drvCfg(); c2.err = e.message; drvSave(c2);
+    if (manual) toast('드라이브 백업 실패 · ' + e.message, 3200);
+    return false;
+  } finally { drvBusy = false; drvPaint(); }
+}
+/* 저장 후 20초 동안 더 바뀌지 않으면 올리고, 앱을 닫거나 숨길 때는 바로 올린다 */
+function drvSoon() { if (!drvOn()) return; clearTimeout(drvTimer); drvTimer = setTimeout(() => drvPush(false), 20000); }
+function drvFlush() { if (drvTimer) { clearTimeout(drvTimer); drvTimer = 0; drvPush(false); } }
+window.addEventListener('pagehide', drvFlush);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') drvFlush(); });
+window.addEventListener('online', () => { if (drvOn() && drvCfg().sig !== dataSig()) drvSoon(); });
+
+async function drvRestore(ask = true) {
+  let r; try { r = await drvCall('get'); } catch (e) { toast('불러오지 못했어요 · ' + e.message, 3000); return; }
+  if (r.empty || !r.data) { toast('드라이브에 백업이 아직 없어요', 2000); return; }
+  const d = new Date(r.ts), when = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const go = () => {
+    try { adopt(JSON.parse(r.data)); saveDB(); const c = drvCfg(); c.sig = dataSig(); drvSave(c); ST.key = keyOf(todayStr()); ST.sel = null; ST.sheet = 'closed'; renderAll(); if ($('#setPanel')) renderSettings(); drvPaint(); toast(`드라이브 백업(${when})으로 복원했어요 · 내역 ${r.n}건`, 3000); }
+    catch (e) { toast('복원하지 못했어요'); }
+  };
+  if (!ask) { go(); return; }
+  askLink(`드라이브 백업(${when} · 내역 ${r.n}건 · 일정 ${r.e}건)으로 지금 가계부를 바꿀까요?${dbMeaningful(db) ? ' 지금 데이터는 사라져요.' : ''}`, [{ k: 'yes', label: '복원', cls: dbMeaningful(db) ? 'dan' : 'pri' }, { k: 'x', label: '취소' }], k => { if (k === 'yes') go(); }, '드라이브에서 복원');
+}
+
+/* 설정 화면의 한 줄 상태 */
+function drvLine() {
+  const c = drvCfg();
+  if (!drvOn()) return '연결 안 됨 · 연결하면 바뀔 때마다 드라이브의 파일 1개에 자동으로 덮어써요';
+  if (drvBusy) return '올리는 중…';
+  if (c.err) return '⚠ ' + c.err;
+  if (!c.last) return '연결됨 · 아직 올리지 않았어요';
+  const d = new Date(c.last.ts);
+  return `마지막 백업 ${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} · 내역 ${c.last.n}건${c.sig !== dataSig() ? ' · 올릴 변경 있음' : ''}`;
+}
+function drvPaint() { const el = $('#drvLine'); if (el) el.textContent = drvLine(); }
+
+function openDrive() {
+  const c = drvCfg();
+  const m = openModal(`<div class="ph"><b>구글 드라이브 백업</b><span class="sp"></span><button class="x" data-dv="x">✕</button></div>
+  <div class="pb">
+    <div class="hint" id="dvLine" style="margin:0 0 8px"></div>
+    <ol class="dvsteps">
+      <li>아래 「코드 복사」를 눌러 Apps Script 코드를 복사해요.</li>
+      <li>script.google.com → 새 프로젝트에 붙여넣고, 맨 위 <b>TOKEN</b>을 나만 아는 비밀키로 바꿔요.</li>
+      <li><b>authorize</b> 함수를 ▶ 실행해서 권한을 허용해요.</li>
+      <li>배포 → 새 배포 → 웹 앱 (실행: 나 · 액세스: 모든 사용자) → 나오는 URL을 아래에 붙여넣어요.</li>
+    </ol>
+    <div class="btns" style="margin:4px 0 10px"><button class="btn" data-dv="copy">코드 복사</button><button class="btn" data-dv="dl">코드 파일 받기</button></div>
+    <div class="row"><input class="fld" id="dvUrl" type="url" placeholder="웹앱 URL (https://script.google.com/macros/s/…/exec)" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+    <div class="row"><input class="fld" id="dvTok" type="password" placeholder="비밀키 (스크립트의 TOKEN과 같게)" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+    <div class="hint">폰 데이터가 지워지면 이 연결 정보도 지워져요. URL과 비밀키는 따로 메모해 두세요. 다시 연결하면 드라이브에서 복원할 수 있어요.</div>
+    <div class="btns"><button class="btn pri" data-dv="save">연결하기</button><span class="sp"></span><button class="btn dan hide" data-dv="off">연결 해제</button></div>
+    <div class="sec hide" id="dvAct">백업 · 복원</div>
+    <div class="btns hide" id="dvAct2"><button class="btn pri" data-dv="push">지금 백업</button><button class="btn" data-dv="pull">드라이브에서 복원</button></div>
+  </div>`);
+  const q = s => $(s, m);
+  q('#dvUrl').value = c.url || ''; q('#dvTok').value = c.token || '';
+  const paint = () => { const on = drvOn(); q('#dvLine').textContent = drvLine(); ['#dvAct', '#dvAct2'].forEach(s => q(s).classList.toggle('hide', !on)); $('[data-dv="off"]', m).classList.toggle('hide', !on); $('[data-dv="save"]', m).textContent = on ? '다시 연결' : '연결하기'; };
+  paint();
+  const unhook = setInterval(() => { if (!m.isConnected) { clearInterval(unhook); return; } q('#dvLine').textContent = drvLine(); }, 1000);
+  m.addEventListener('click', async e => {
+    const b = e.target.closest('[data-dv]'); if (!b) return;
+    const k = b.dataset.dv;
+    if (k === 'x') { closeModal(m); if ($('#setPanel')) renderSettings(); return; }
+    if (k === 'copy') { try { await navigator.clipboard.writeText(GS_CODE); toast('코드를 복사했어요'); } catch (er) { toast('복사하지 못했어요 · 「코드 파일 받기」를 써 주세요', 2600); } return; }
+    if (k === 'dl') { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([GS_CODE], { type: 'text/plain' })); a.download = 'gagyebu-drive.gs'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500); return; }
+    if (k === 'off') { askLink('드라이브 연결을 끊을까요? 드라이브에 있는 백업 파일은 그대로 남아요.', [{ k: 'yes', label: '연결 해제', cls: 'dan' }, { k: 'x', label: '취소' }], kk => { if (kk === 'yes') { drvSave({}); paint(); toast('연결을 해제했어요'); } }, '연결 해제'); return; }
+    if (k === 'save') {
+      const cfg = { url: q('#dvUrl').value.trim(), token: q('#dvTok').value.trim() };
+      if (!cfg.url || !cfg.token) { toast('URL과 비밀키를 모두 넣어 주세요'); return; }
+      b.disabled = true; b.textContent = '확인 중…';
+      try {
+        const r = await drvCall('ping', null, cfg);
+        drvSave(Object.assign({}, cfg)); paint();
+        const inf = r.info;
+        if (inf && inf.n && !dbMeaningful(db)) { toast('연결했어요 · 드라이브에 백업이 있어요', 2000); drvRestore(true); }
+        else if (inf && inf.n && dbMeaningful(db) && inf.ts > Date.now() - 864e5 * 365 && inf.n > db.tx.length) {
+          askLink(`연결했어요. 드라이브 백업(내역 ${inf.n}건)이 지금 폰(내역 ${db.tx.length}건)보다 많아요. 어떻게 할까요?`, [{ k: 'pull', label: '드라이브에서 복원', cls: 'pri' }, { k: 'push', label: '지금 폰 내용으로 덮어쓰기' }], kk => { if (kk === 'pull') drvRestore(false); else drvPush(true); }, '드라이브 백업');
+        } else { toast('연결했어요 · 지금 백업할게요', 1600); drvPush(true); }
+      } catch (er) { toast('연결 실패 · ' + er.message, 3500); }
+      finally { b.disabled = false; paint(); }
+      return;
+    }
+    if (k === 'push') { await drvPush(true); paint(); return; }
+    if (k === 'pull') { drvRestore(true); return; }
+  });
+}
+
+/* 앱을 열 때: 폰 저장이 지워졌어도 연결 정보가 복사본에 남아 있으면 되살린다 */
+async function drvBoot() {
+  try {
+    if (!drvOn()) { const all = await safeAll(), x = all.find(i => i.k === 'drive'); if (x && x.url && x.token) { try { localStorage.setItem(DRV_KEY, JSON.stringify({ url: x.url, token: x.token })); } catch (e) { } } }
+  } catch (e) { }
+  if (drvOn() && dbMeaningful(db) && drvCfg().sig !== dataSig()) drvSoon();
+}
 /* ===== 달력 가계부 · 시작 ===== */
 (function boot() {
   loadDB();
@@ -2868,6 +3025,7 @@ function autoBkNow() { if (!autoBkDue()) return; doBackup(true); toast('자동 �
   bindRestore();
   lockNow();
   try { safeCheck(); } catch (e) { }
+  try { drvBoot(); } catch (e) { }
   try { if (window.safeMirror && dbMeaningful(db)) window.safeMirror(); } catch (e) { }
   renderAll();
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { }
