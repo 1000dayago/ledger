@@ -599,9 +599,24 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <div id="dock"><div class="seg" id="dockView"></div><button class="todayb" data-a="today" aria-label="오늘로 이동">오늘</button><span class="sp"></span><div class="fabs3"><button class="fabc out" id="fab-out" data-a="fab" data-t="out" aria-label="지출 추가"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 9v8H9"/></svg><small>지출</small></button><button class="fabc ev" id="fab-ev" data-a="fab" data-t="ev" aria-label="일정 추가"><svg viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14" rx="3"/><path d="M8 3.5v4M16 3.5v4M4 10h16M12 12.5v5M9.5 15h5"/></svg><small>일정</small></button><button class="fabc in" id="fab-in" data-a="fab" data-t="in" aria-label="수입 추가"><svg viewBox="0 0 24 24"><path d="M17 7L7 17M7 9v8h8"/></svg><small>수입</small></button></div></div>
 <input type="file" id="fileIn" accept=".json,application/json" class="hide">
 <script>
+/* 새 화면이 열리지 않으면 이전 화면으로 되돌리는 안전장치 (APK 자동 업데이트용) */
+setTimeout(function () {
+  try {
+    if (window.__booted) return;
+    var h = JSON.parse(localStorage.getItem('gagyebu.hot') || 'null');
+    if (!h || h.ok !== 0) return;
+    var W = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.WebView;
+    if (!W) return;
+    localStorage.setItem('gagyebu.hotbad', h.v);
+    h.ok = -1; localStorage.setItem('gagyebu.hot', JSON.stringify(h));
+    if (h.prev && h.prev.charAt(0) === '/') W.setServerBasePath({ path: h.prev }); else W.setServerAssetPath({ path: h.prev || 'public' });
+  } catch (e) { }
+}, 9000);
+</script>
+<script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.16.0';
+const APP_VERSION = '2.17.0';
 const PAGES_URL = 'https://1000dayago.github.io/ledger/index.html';
 const isApk = () => { try { return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); } catch (e) { return false; } };
 const nativePlug = n => { try { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins[n]) || null; } catch (e) { return null; } };
@@ -1293,6 +1308,7 @@ function bannersHTML() {
     if (age > 30) h += `<div class="banner"><span>${db.lastBackup ? `백업한 지 ${age}일 지났어요` : '아직 백업한 적이 없어요'}</span><button class="go" data-a="backup">백업</button><button data-a="ban" data-k="bk">✕</button></div>`;
   }
   if (isApk() && notiCount()) h += `<div class="banner"><span>확인할 카드·문자 알림 ${notiCount()}건</span><button class="go" data-a="noti">확인</button></div>`;
+  if (window.__hotPending) h += `<div class="banner"><span>새 버전 v${esc(window.__hotPending.ver)} 준비됐어요</span><button class="go" data-a="hotgo">적용</button></div>`;
   return h;
 }
 
@@ -2333,7 +2349,7 @@ function renderSettings() {
     <div class="row"><label style="width:80px">자동 백업</label><div class="seg">${[['off', '끔'], ['day', '매일'], ['week', '주 1회'], ['month', '월 1회']].map(([v, n]) => `<button data-s="autobk" data-v="${v}" class="${(S().autoBk || 'week') === v ? 'on' : ''}">${n}</button>`).join('')}</div><span class="sp"></span><button class="btn" data-s="safelist">자동 보관본</button></div>
     <div class="hint" style="margin:0 0 6px">저장할 때마다 폰 안에 복사본을 두고, 정해진 주기가 지났고 바뀐 내용이 있으면 앱을 열 때 백업 파일을 다운로드 폴더에 저장해요.</div>
     <div class="btns"><button class="btn pri" data-s="backup">백업 저장</button><button class="btn" data-s="restore">복원</button><button class="btn" data-s="upd">업데이트 확인</button><span class="sp"></span><button class="btn dan" data-s="resetmenu"><svg class="lkic" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 3-6.2 M4 4v4h4"/></svg> 초기화</button></div>
-    <div class="hint">버전 ${APP_VERSION} · 백업 파일은 폰의 다운로드 폴더에 저장돼요. 폰을 바꾸거나 브라우저 데이터를 지우기 전에 꼭 백업하세요.</div>
+    <div class="hint">버전 ${APP_VERSION}${hotOK() ? ' · 앱을 켤 때 새 버전을 자동으로 확인해요' : ''} · 백업 파일은 폰의 다운로드 폴더에 저장돼요. 폰을 바꾸거나 브라우저 데이터를 지우기 전에 꼭 백업하세요.</div>
   </div>`;
 }
 function doBackup(quiet) {
@@ -2372,6 +2388,7 @@ function doReset(btn) {
   try { localStorage.setItem('gagyebu.wiped', '1'); } catch (e) { } db = freshDB(); persist(); ST.sel = null; ST.sheet = 'closed'; renderSettings(); renderAll(); toast('모든 데이터를 지웠어요');
 }
 async function doUpdate() {
+  if (hotOK()) { hotCheck(true); return; }
   toast('최신 버전을 확인하는 중…', 1500);
   let latest = '';
   try {
@@ -3433,6 +3450,104 @@ async function openNotiLog() {
   });
 }
 ACT.noti = () => openNoti();
+/* ===== 달력 가계부 · APK 자동 업데이트 =====
+   깃허브에 올린 최신 index.html 을 앱이 직접 내려받아 폰 안에 두고, 그 화면으로 열어요.
+   같은 주소(https://localhost)로 열기 때문에 저장된 데이터는 그대로예요.
+   새 화면이 9초 안에 열리지 않으면 이전 화면으로 자동으로 되돌려요. (body.html 의 안전장치)
+   안드로이드 기능(알림 읽기 등)을 바꾼 때만 새 APK 를 설치하면 돼요. */
+const verNum = v => String(v || '0').split('.').map(x => parseInt(x, 10) || 0);
+const verNewer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+const hotOK = () => isApk() && !!nativePlug('WebView') && !!nativePlug('Filesystem');
+const hotState = () => { try { return JSON.parse(localStorage.getItem('gagyebu.hot') || 'null'); } catch (e) { return null; } };
+
+/* 최신 index.html 을 내려받아 확인 */
+async function hotFetch() {
+  let text = '';
+  try {
+    const r = await fetch(PAGES_URL + '?chk=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) throw new Error('http ' + r.status);
+    text = await r.text();
+  } catch (e) { return { err: 'net' }; }
+  const m = text.match(/APP_VERSION = '([\d.]+)'/);
+  if (!m || text.length < 100000 || !/<\/html>\s*$/.test(text)) return { err: 'bad' };
+  try {   /* 문법만 검사 (실행하지 않아요) */
+    const OP = '<scr' + 'ipt>', CL = '</scr' + 'ipt>', a = text.lastIndexOf(OP), z = text.lastIndexOf(CL);
+    if (a < 0 || z < a) return { err: 'bad' };
+    new Function(text.slice(a + OP.length, z));
+  } catch (e) { return { err: 'bad' }; }
+  return { ver: m[1], text };
+}
+
+/* 폰 안에 저장하고 그 화면으로 다시 열기 */
+async function hotApply(text, ver) {
+  const FS = nativePlug('Filesystem'), WV = nativePlug('WebView');
+  let prev = 'public';
+  try { prev = (await WV.getServerBasePath()).path || 'public'; } catch (e) { }
+  const dirName = 'live-' + ver;
+  await FS.writeFile({ path: dirName + '/index.html', data: text, directory: 'DATA', encoding: 'utf8', recursive: true });
+  const u = await FS.getUri({ path: dirName, directory: 'DATA' });
+  const dir = decodeURIComponent(String(u.uri || '').replace(/^file:\/\//, ''));
+  if (!dir || dir.length < 8) throw new Error('저장 위치를 알 수 없어요');
+  try { saveDB(); if (typeof safeFlush === 'function') safeFlush(); } catch (e) { }
+  try { localStorage.setItem('gagyebu.hot', JSON.stringify({ v: ver, t: Date.now(), ok: 0, prev })); } catch (e) { }
+  await WV.setServerBasePath({ path: dir });
+}
+async function hotGo() {
+  const p = window.__hotPending; if (!p) return;
+  toast(`v${p.ver}로 업데이트하는 중…`, 3000);
+  try { await hotApply(p.text, p.ver); } catch (e) { toast('업데이트하지 못했어요 · ' + ((e && e.message) || ''), 3500); }
+}
+
+/* 새 화면이 잘 열렸으면 확정 (다음 실행부터도 이 화면으로 열려요) */
+async function hotCommit() {
+  const h = hotState(); if (!h || h.ok !== 0 || h.v !== APP_VERSION) return;
+  const WV = nativePlug('WebView'), FS = nativePlug('Filesystem'); if (!WV) return;
+  try { await WV.persistServerBasePath(); h.ok = 1; localStorage.setItem('gagyebu.hot', JSON.stringify(h)); localStorage.removeItem('gagyebu.hotbad'); } catch (e) { return; }
+  toast(`v${APP_VERSION}로 업데이트됐어요`, 3500);
+  try {   /* 이전 화면 파일 정리 */
+    const cur = String((await WV.getServerBasePath()).path || '').split('/').pop();
+    const ls = await FS.readdir({ path: '', directory: 'DATA' });
+    for (const f of (ls.files || [])) { const n = f.name || f; if (/^live-/.test(n) && n !== cur) await FS.rmdir({ path: n, directory: 'DATA', recursive: true }); }
+  } catch (e) { }
+}
+
+let hotBusy = false;
+async function hotCheck(manual) {
+  if (!hotOK()) { if (manual) toast('이 기기에서는 자동 업데이트를 쓸 수 없어요 · 새 APK 를 설치해 주세요', 3500); return; }
+  if (hotBusy) return; hotBusy = true;
+  try {
+    if (manual) toast('최신 버전을 확인하는 중…', 1500);
+    const r = await hotFetch();
+    if (r.err) { if (manual) toast(r.err === 'net' ? '확인하지 못했어요 · 인터넷 연결을 확인해 주세요' : '받은 파일이 올바르지 않아 건너뛰었어요', 3000); return; }
+    if (!verNewer(r.ver, APP_VERSION)) { if (manual) toast(`최신 버전이에요 (v${APP_VERSION})`, 2600); return; }
+    let bad = ''; try { bad = localStorage.getItem('gagyebu.hotbad') || ''; } catch (e) { }
+    if (!manual && bad === r.ver) return;   /* 열리지 않아 되돌린 버전은 다시 시도하지 않아요 */
+    window.__hotPending = { ver: r.ver, text: r.text };
+    if (manual) askLink(`새 버전 v${r.ver}이 있어요. 지금 적용할까요? 앱이 잠깐 다시 열려요. 저장된 내용은 그대로예요.`, [{ k: 'later', label: '나중에' }, { k: 'go', label: '지금 적용', cls: 'pri' }], k => { if (k === 'go') hotGo(); }, '업데이트');
+    else { renderAll(); hotAutoSoon(); }
+  } finally { hotBusy = false; }
+}
+/* 앱을 막 켠 때 아무것도 하고 있지 않으면 알아서 적용, 아니면 위쪽 배너로 알려요 */
+function hotAutoSoon() {
+  const t0 = Date.now();
+  const tick = () => {
+    if (!window.__hotPending || Date.now() - t0 > 120000) return;
+    const ae = document.activeElement, typing = ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
+    if (!$('.lockscr') && !$('.modal') && !typing && document.visibilityState === 'visible') { hotGo(); return; }
+    setTimeout(tick, 2000);
+  };
+  setTimeout(tick, 800);
+}
+let hotLast = 0;
+function hotBoot() {
+  if (!hotOK()) return;
+  hotCommit();
+  setTimeout(() => { hotLast = Date.now(); hotCheck(false); }, 2500);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && Date.now() - hotLast > 10 * 60000 && !window.__hotPending) { hotLast = Date.now(); hotCheck(false); }
+  });
+}
+ACT.hotgo = () => hotGo();
 /* ===== 달력 가계부 · 시작 ===== */
 (function boot() {
   loadDB();
@@ -3450,6 +3565,8 @@ ACT.noti = () => openNoti();
   try { notiBoot(); } catch (e) { }
   try { if (window.safeMirror && dbMeaningful(db)) window.safeMirror(); } catch (e) { }
   renderAll();
+  window.__booted = true;
+  try { hotBoot(); } catch (e) { }
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { }
   try {
     const u = localStorage.getItem('gagyebu.upd');
