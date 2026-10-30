@@ -582,6 +582,15 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 .nt.warnbox{border-color:var(--warn)}
 .hint.warn{color:var(--warn)}
 .kv .btn{padding:5px 10px;font-size:12px}
+
+/* 대여자 목록 · 사람별 차감 내역 · ? 도움말 */
+.lkt{display:flex;align-items:center;gap:6px}
+.lkscroll{max-height:196px;overflow:auto}
+.lkhelp{margin:0 4px 6px;line-height:1.5}
+.qm{width:18px;height:18px;border-radius:9px;background:var(--soft);color:var(--sub);font-size:11px;font-weight:800;line-height:18px;padding:0;text-align:center;vertical-align:middle}
+.rexp{font-size:12px;color:var(--acc);font-weight:700;padding:4px 0;cursor:pointer}
+.rsub{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--sub);padding:3px 0;border-top:1px dashed var(--line)}
+.rsub.done{opacity:.65}
 </style>
 </head>
 <body>
@@ -592,7 +601,7 @@ body.sheet-open #cal{padding-bottom:calc(var(--sh,0px) + 84px)}
 <script>
 'use strict';
 /* ===== 달력 가계부 · core (날짜, 가계월, 음력, 공휴일, 저장소, 집계) ===== */
-const APP_VERSION = '2.15.0';
+const APP_VERSION = '2.16.0';
 const PAGES_URL = 'https://1000dayago.github.io/ledger/index.html';
 const isApk = () => { try { return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); } catch (e) { return false; } };
 const nativePlug = n => { try { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins[n]) || null; } catch (e) { return null; } };
@@ -1164,6 +1173,21 @@ function loanBalances() {
   return Object.entries(m).filter(([, v]) => v !== 0).map(([name, v]) => ({ name, v })).sort((a, b) => b.v - a.v);
 }
 
+/* 대여한 적 있는 사람 목록 (이름이 같으면 한 사람 · 남은 금액 = 대여 − 받음) */
+function loanPeople(skipId) {
+  const m = new Map();
+  db.tx.forEach(t => {
+    if (!isLoan(t) || t.id === skipId) return;
+    const k = (t.name || '').trim(); if (!k) return;
+    const o = m.get(k) || { name: k, v: 0, n: 0, last: '' };
+    o.v += t.type === 'out' ? t.amount : -t.amount;
+    if (t.type === 'out') o.n++;
+    if (t.date > o.last) o.last = t.date;
+    m.set(k, o);
+  });
+  return [...m.values()].filter(o => o.n > 0).sort((a, b) => ((b.v > 0) - (a.v > 0)) || (a.last < b.last ? 1 : a.last > b.last ? -1 : 0));
+}
+
 /* ---------- 백업 ---------- */
 function exportJSON() { db.lastBackup = todayStr(); saveDB(); return JSON.stringify(db); }
 function importJSON(text) { adopt(JSON.parse(text)); saveDB(); }
@@ -1612,12 +1636,22 @@ function openInput(opts = {}) {
     { const on = !!(c && c.loan); q('#iCntRow').classList.toggle('hide', !on); if (on) { q('#iCntT').textContent = st.type === 'out' ? '지출에 반영 (합계에 포함)' : '수입에 반영 (합계에 포함)'; q('#iCnt').checked = !!st.cnt; } }
   }
   function paintLk() {
-    const c = st.cat && catById(st.cat), box = q('#iLk'), on = !!(c && c.loan && st.type === 'in');
-    box.classList.toggle('hide', !on); if (!on) return;
+    const c = st.cat && catById(st.cat), box = q('#iLk'), isL = !!(c && c.loan);
+    box.classList.toggle('hide', !isL); if (!isL) return;
+    if (st.type === 'out') { paintPeople(box); return; }
     const open = loanLedger(edit && edit.id).filter(i => i.left > 0);
     if (st.lk && !open.some(i => i.tx.id === st.lk)) st.lk = '';
     box.innerHTML = `<div class="lkh"><b>차감할 대여</b><small>${st.lk ? '선택한 대여에서 먼저 차감해요' : '선택 안 하면 같은 이름의 오래된 대여부터 자동 차감'}</small></div>` +
       (open.length ? open.map(i => `<button type="button" class="lki ${st.lk === i.tx.id ? 'on' : ''}" data-lk="${i.tx.id}"><span class="lkn"><b>${esc(i.name)}</b><small>${i.tx.date.slice(5).replace('-', '/')} 대여 ${fmt(i.amount)}${i.paid ? ' · 받음 ' + fmt(i.paid) : ''}${i.late ? ' · ' + i.late + '일 지남' : ''}</small></span><span class="num">${fmt(i.left)}</span></button>`).join('') : '<div class="hint">남은 대여가 없어요</div>');
+  }
+  /* 대여 입력: 이미 대여한 사람 목록 (눌러서 이름을 똑같이 맞추면 한 사람의 대여로 합산돼요) */
+  function paintPeople(box) {
+    const ppl = loanPeople(edit && edit.id), nm = (st.name || '').trim(), k = normName(nm);
+    const exact = ppl.some(p => p.name === nm);
+    const list = k ? ppl.filter(p => normName(p.name).includes(k)) : ppl;
+    box.innerHTML = `<div class="lkh"><div class="lkt"><b>기존 대여자</b><button type="button" class="qm" data-hp="1" aria-label="사용법">?</button></div><small>${exact ? `‘${esc(nm)}’ 님에게 이어서 대여해요 (합산)` : nm ? '새 이름으로 대여해요' : '같은 사람이면 눌러서 이름을 맞춰 주세요'}</small></div>`
+      + (st.hp ? '<div class="hint lkhelp">이름이 같으면 한 사람의 대여로 합쳐져요. 예) 5,000원 + 5,000원 대여 후 6,000원을 받으면 오래된 대여부터 차감돼서 1차 완료, 2차 4,000원 남음. 같은 사람이라도 따로 보고 싶으면 이름을 다르게 적으세요. (예: 민수(차))</div>' : '')
+      + (list.length ? `<div class="lkscroll">${list.map(p => `<button type="button" class="lki ${p.name === nm ? 'on' : ''}" data-ln="${esc(p.name)}"><span class="lkn"><b>${esc(p.name)}</b><small>${p.v > 0 ? '남은 ' + fmt(p.v) + '원' : p.v < 0 ? '받은 돈이 더 많아요' : '모두 받음'} · 대여 ${p.n}건</small></span><span class="num">${p.v > 0 ? fmt(p.v) : ''}</span></button>`).join('')}</div>` : (ppl.length ? '' : '<div class="hint">아직 대여한 사람이 없어요</div>'));
   }
   function paintBar() {
     const addB = `<button class="icb add" data-newcat="1" aria-label="항목 추가·수정"><span class="ico plus"><svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg></span><span class="n">추가·수정</span></button>`;
@@ -1698,6 +1732,10 @@ function openInput(opts = {}) {
   q('#iAmount').oninput = e => { const d = e.target.value.replace(/\D/g, '').slice(0, 11); e.target.value = d ? fmt(+d) : ''; };
   q('#iCnt').onchange = e => { st.cnt = e.target.checked; };
   q('#iLk').addEventListener('click', e => {
+    const hp = e.target.closest('[data-hp]');
+    if (hp) { st.hp = !st.hp; paintLk(); return; }
+    const ln = e.target.closest('[data-ln]');
+    if (ln) { st.name = ln.dataset.ln; q('#iName').value = st.name; paintLk(); return; }
     const b = e.target.closest('[data-lk]'); if (!b) return;
     if (st.lk === b.dataset.lk) st.lk = '';
     else {
@@ -1710,6 +1748,7 @@ function openInput(opts = {}) {
   q('#iName').oninput = e => {
     st.name = e.target.value;
     if (!st.manual) { const sg = suggestCat(st.name, st.type); if (sg) setCat(sg, true); }
+    else if (st.cat && catById(st.cat).loan && st.type === 'out') paintLk();
   };
 
   q('#iBar').addEventListener('click', e => {
@@ -2566,6 +2605,7 @@ function openRecv() {
   const m = openModal('', 'full'); m.id = 'rcvPanel';
   const paint = () => {
     const hid = !!S().hideSum, V = v => hid ? MASK : fmt(v), rc = recvSummary();
+    const byN = {}; loanLedger().forEach(i => { (byN[i.name] = byN[i.name] || []).push(i); });
     const rText = r => `${{ monthly: '매월', weekly: '매주', once: '한 번' }[r.repeat] || '매월'} ${fmt(r.amount)}원 · ${r.start}부터${r.until ? ' ~ ' + r.until : ''}`;
     $('.panel', m).innerHTML = `
     <div class="ph"><b>받을 돈</b><span class="sp"></span><button class="x" data-rv="x">✕</button></div>
@@ -2573,12 +2613,20 @@ function openRecv() {
       <div class="rkpi two"><div><small>받을 돈 합계</small><b class="pos">${V(rc.receivable)}원</b></div><div><small>갚을 돈 합계</small><b class="neg">${V(rc.payable)}원</b></div></div>
       <div class="hint" style="margin:4px 0 10px">빌려준 돈(대여 − 회수)에 "정기적으로 받기로 한 돈"이 기한마다 더해져요. 받으면 <b>받음</b>으로 입력하세요.</div>
       ${openRecvList()}
-      <div class="sec">사람별 · 정기 받을 돈</div>
+      <div class="sec">사람별 · 정기 받을 돈 <button class="qm" data-rv="help" aria-label="사용법">?</button></div>
+      ${ST.rhelp ? '<div class="hint" style="margin:0 0 8px">이름이 같은 대여는 한 사람으로 합쳐 보여줘요. 받은 돈은 오래된 대여부터 차례로 차감돼요. 예) 5,000원 + 5,000원 대여, 6,000원 받음 → 1차 완료, 2차 4,000원 남음. 차감 내역을 누르면 건별 상태가 보여요.</div>' : ''}
       ${rc.list.length ? rc.list.map(o => {
         const per = o.recvs.filter(r => r.amount > 0 && r.repeat !== 'once');
         const late = per.length && o.balance > 0 ? Math.ceil(o.balance / per[0].amount) : 0;
         return `<div class="rcard"><div class="rtop"><b class="nm">${esc(o.name)}</b><b class="num ${o.balance > 0 ? 'pos' : o.balance < 0 ? 'neg' : ''}">${o.balance < 0 ? '갚을 ' : ''}${V(Math.abs(o.balance))}원</b></div>
-          <div class="rdet">${o.loan ? `대여 잔액 ${V(o.loan)}원` : ''}${o.accrued ? `${o.loan ? ' + ' : ''}정기 발생 ${V(o.accrued)}원` : ''}${late > 1 ? ` · 약 ${late}회분 밀림` : ''}</div>
+          ${(() => { const hi = (byN[o.name] || []).length > 0, t = `${hi ? '' : (o.loan ? `대여 잔액 ${V(o.loan)}원` : '')}${o.accrued ? `${o.loan && !hi ? ' + ' : ''}정기 발생 ${V(o.accrued)}원` : ''}${late > 1 ? ` · 약 ${late}회분 밀림` : ''}`; return t ? `<div class="rdet">${t}</div>` : ''; })()}
+          ${(() => {
+            const its = byN[o.name] || []; if (!its.length) return '';
+            const tot = its.reduce((a, i) => a + i.amount, 0), open = !!(ST.rexp && ST.rexp[o.name]);
+            return `<div class="rdet">대여 ${its.length}건 합계 ${V(tot)}원 − 받음 ${V(tot - o.loan)}원 = 남음 ${V(o.loan)}원</div>`
+              + `<div class="rexp" data-rv="exp" data-n="${esc(o.name)}">차감 내역 ${open ? '▴' : '▾'}</div>`
+              + (open ? its.map((i, k) => `<div class="rsub ${i.status}"><span>${k + 1}차 · ${shortMD(i.tx.date)} 대여 ${V(i.amount)}원</span><span>${i.status === 'done' ? '완료' : i.paid ? `받음 ${V(i.paid)} · 남음 ${V(i.left)}` : '미회수'}</span></div>`).join('') : '');
+          })()}
           ${o.recvs.map(r => { const nx = recvNext(r); return `<div class="rrule" data-rv="edit" data-id="${r.id}">↻ ${rText(r)}${nx ? ` · 다음 ${shortMD(nx)}` : ''}<span>수정 ›</span></div>`; }).join('')}
           <div class="rbtn"><button data-rv="got" data-n="${esc(o.name)}" class="pri">받음 입력</button><button data-rv="lend" data-n="${esc(o.name)}">대여 추가</button><button data-rv="add" data-n="${esc(o.name)}">정기 추가</button></div></div>`;
       }).join('') : '<div class="empty">아직 받을 돈이 없어요. 아래에서 추가해 보세요.</div>'}
@@ -2592,6 +2640,8 @@ function openRecv() {
     const k = b.dataset.rv, n = b.dataset.n;
     if (k === 'x') closeModal(m);
     else if (k === 'togdone') { ST.showDone = !ST.showDone; paint(); }
+    else if (k === 'help') { ST.rhelp = !ST.rhelp; paint(); }
+    else if (k === 'exp') { ST.rexp = ST.rexp || {}; ST.rexp[n] = !ST.rexp[n]; paint(); }
     else if (k === 'collect') { const x = loanLedger().find(i => i.tx.id === b.dataset.id); if (x) openInput({ type: 'in', cat: 'loan', name: x.name, amount: x.left || undefined, lk: x.tx.id }); }
     else if (k === 'got') openInput({ type: 'in', cat: 'loan', name: n });
     else if (k === 'lend') openInput({ type: 'out', cat: 'loan', name: n });
